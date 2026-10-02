@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-10-01T04:49:17.288990+00:00",
+  "status": "PASS",
+  "results": [
+    {
+      "name": "Go unit and PTY integration (race detector)",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "Go static checks",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "UI layout and input invariants",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "UI production bundle",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "Headless executable",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "End-to-end UI and real PTY",
+      "status": "PASS",
+      "exit_code": 0
+    }
+  ]
+}

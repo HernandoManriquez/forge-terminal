@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Forge Terminal</title>
+    <link rel="icon" href="/icon.svg" />
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <header class="topbar">
+        <div class="brand">
+          <img src="/icon.svg" alt="" width="31" height="31" /><strong
+            >forge<span>terminal</span></strong
+          ><span class="version">MVP 0.1</span>
+        </div>
+        <div class="top-path">
+          <i data-lucide="monitor" class="icon"></i><span>Local</span
+          ><span class="slash">/</span
+          ><span id="workspace-title">Mi espacio</span>
+        </div>
+        <button id="palette-button" class="palette-trigger">
+          <i data-lucide="search" class="icon"></i>Ir a un comando…<kbd
+            >Ctrl K</kbd
+          >
+        </button>
+        <button
+          id="focus-button"
+          class="icon-button"
+          title="Modo enfoque · Ctrl+Shift+F"
+          aria-label="Modo enfoque"
+        >
+          <i data-lucide="maximize" class="icon"></i>
+        </button>
+        <button
+          id="settings-button"
+          class="icon-button"
+          title="Preferencias"
+          aria-label="Preferencias"
+        >
+          <i data-lucide="settings-2" class="icon"></i>
+        </button>
+      </header>
+      <div class="body">
+        <nav class="rail" aria-label="Paneles">
+          <button
+            id="left-toggle"
+            class="rail-button selected"
+            title="Espacios y archivos"
+            aria-label="Espacios y archivos"
+          >
+            <i data-lucide="panels-top-left" class="icon"></i>
+          </button>
+          <button
+            id="snippets-toggle"
+            class="rail-button"
+            title="Comandos favoritos"
+            aria-label="Comandos favoritos"
+          >
+            <i data-lucide="bookmark" class="icon"></i>
+          </button>
+          <button
+            id="save-workspace"
+            class="rail-button"
+            title="Guardar espacio · Ctrl+Shift+S"
+            aria-label="Guardar espacio"
+          >
+            <i data-lucide="save" class="icon"></i>
+          </button>
+          <div class="rail-spacer"></div>
+          <button
+            id="help-button"
+            class="rail-button"
+            title="Atajos de teclado"
+            aria-label="Atajos de teclado"
+          >
+            <i data-lucide="keyboard" class="icon"></i>
+          </button>
+          <span
+            class="local-indicator"
+            title="Sin telemetría. Solo este equipo."
+          ></span>
+        </nav>
+        <aside id="left-panel" class="left-panel">
+          <div class="section-heading">
+            <span>ESPACIOS</span
+            ><button
+              id="new-workspace"
+              class="icon-button small"
+              title="Nuevo espacio"
+              aria-label="Nuevo espacio"
+            >
+              <i data-lucide="plus" class="icon"></i>
+            </button>
+          </div>
+          <div id="workspace-list" class="workspace-list"></div>
+          <div class="section-heading file-heading">
+            <span>EXPLORADOR</span>
+            <div>
+              <button
+                id="files-up"
+                class="icon-button small"
+                title="Carpeta superior"
+                aria-label="Carpeta superior"
+              >
+                <i data-lucide="arrow-up" class="icon"></i></button
+              ><button
+                id="files-refresh"
+                class="icon-button small"
+                title="Actualizar"
+                aria-label="Actualizar archivos"
+              >
+                <i data-lucide="refresh-cw" class="icon"></i>
+              </button>
+            </div>
+          </div>
+          <div id="file-section" class="file-section">
+            <button
+              id="file-path"
+              class="file-path"
+              title="Cambiar carpeta"
+            ></button>
+            <div id="file-list" class="file-list"></div>
+          </div>
+          <div class="sidebar-footer">
+            <i data-lucide="hard-drive" class="icon"></i>
+            <div>
+              <strong>Tu equipo. Tus comandos.</strong
+              ><span>Sin nube · Sin telemetría</span>
+            </div>
+          </div>
+        </aside>
+        <div
+          id="left-resizer"
+          class="dock-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+          aria-label="Ancho del explorador"
+        ></div>
+        <main class="workbench">
+          <div class="workspace-bar">
+            <div>
+              <span class="eyebrow">WORKSPACE</span>
+              <h1 id="main-title">Mi espacio</h1>
+            </div>
+            <div class="workspace-actions">
+              <span id="session-count" class="muted small-text">0 sesiones</span
+              ><button id="profile-new" class="button primary">
+                <i data-lucide="plus" class="icon"></i>Nueva terminal
+              </button>
+            </div>
+          </div>
+          <div class="terminal-toolbar">
+            <div id="pane-tabs" class="pane-tabs"></div>
+            <div class="layout-actions">
+              <button
+                id="split-row"
+                class="icon-button small"
+                title="Dividir en columnas · Ctrl+Shift+D"
+                aria-label="Dividir en columnas"
+              >
+                <i data-lucide="columns-2" class="icon"></i></button
+              ><button
+                id="split-col"
+                class="icon-button small"
+                title="Dividir en filas · Ctrl+Shift+E"
+                aria-label="Dividir en filas"
+              >
+                <i data-lucide="rows-2" class="icon"></i></button
+              ><span class="divider"></span
+              ><button
+                id="search-button"
+                class="icon-button small"
+                title="Buscar en terminal · Ctrl+Shift+G"
+                aria-label="Buscar en terminal"
+              >
+                <i data-lucide="search" class="icon"></i></button
+              ><button
+                id="right-toggle"
+                class="icon-button small"
+                title="Panel de contexto"
+                aria-label="Panel de contexto"
+              >
+                <i data-lucide="panel-right" class="icon"></i>
+              </button>
+            </div>
+          </div>
+          <div id="search-bar" class="search-bar" hidden>
+            <i data-lucide="search" class="icon"></i
+            ><input
+              id="search-input"
+              aria-label="Buscar en la salida"
+              placeholder="Buscar en la salida de esta terminal"
+            /><span id="search-result"></span
+            ><button
+              id="search-prev"
+              class="icon-button small"
+              aria-label="Resultado anterior"
+            >
+              <i data-lucide="chevron-up" class="icon"></i></button
+            ><button
+              id="search-next"
+              class="icon-button small"
+              aria-label="Resultado siguiente"
+            >
+              <i data-lucide="chevron-down" class="icon"></i></button
+            ><button
+              id="search-close"
+              class="icon-button small"
+              aria-label="Cerrar búsqueda"
+            >
+              <i data-lucide="x" class="icon"></i>
+            </button>
+          </div>
+          <div id="terminal-grid" class="terminal-grid"></div>
+          <div id="command-area" class="command-area">
+            <div class="command-label">
+              <span><i data-lucide="sparkles" class="icon"></i>COMPOSITOR</span
+              ><span
+                >Autocompletar <kbd>Tab</kbd
+                ><span class="dot-separator">·</span> Enfocar
+                <kbd>Ctrl Espacio</kbd></span
+              >
+            </div>
+            <div class="command-row">
+              <span class="prompt-symbol">›</span
+              ><input
+                id="command-input"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                aria-label="Compositor de comandos"
+                placeholder="Escribe un comando, descubre el siguiente…"
+              /><button
+                id="insert-command"
+                class="button subtle"
+                title="Insertar sin ejecutar"
+              >
+                Insertar<i
+                  data-lucide="corner-down-left"
+                  class="icon"
+                ></i></button
+              ><button
+                id="run-command"
+                class="button primary"
+                title="Ejecutar comando"
+              >
+                <i data-lucide="play" class="icon"></i>Ejecutar
+              </button>
+            </div>
+            <div id="suggestions" class="suggestions" hidden></div>
+          </div>
+        </main>
+        <div
+          id="right-resizer"
+          class="dock-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+          aria-label="Ancho de contexto"
+        ></div>
+        <aside id="right-panel" class="right-panel">
+          <div class="section-heading">
+            <span>CONTEXTO</span
+            ><span class="live-badge"><span></span>LOCAL</span>
+          </div>
+          <div class="context-block">
+            <span class="label">DIRECTORIO ACTIVO</span>
+            <div class="context-path">
+              <i data-lucide="folder-open" class="icon"></i
+              ><span id="context-cwd">~</span>
+            </div>
+            <button id="change-directory" class="text-button">
+              Abrir otra carpeta<i
+                data-lucide="arrow-up-right"
+                class="icon"
+              ></i>
+            </button>
+          </div>
+          <div id="git-context" class="git-card">
+            <i data-lucide="git-branch" class="icon"></i>
+            <div>
+              <strong id="git-branch">Sin repositorio</strong
+              ><span id="git-status">El estado Git aparece aquí</span>
+            </div>
+          </div>
+          <div id="metrics-section" class="metrics-section">
+            <div class="section-heading">
+              <span>MOTOR</span><i data-lucide="activity" class="icon"></i>
+            </div>
+            <div class="metric-row">
+              <span
+                >Memoria Go
+                <span title="Heap del backend. No incluye WebView ni shells."
+                  >ⓘ</span
+                ></span
+              ><strong id="memory-value">—</strong>
+            </div>
+            <div class="memory-meter"><span id="memory-bar"></span></div>
+            <div class="metric-row">
+              <span>Terminales abiertas</span
+              ><strong id="metrics-sessions">0 / 8</strong>
+            </div>
+            <div class="engine-note">Vista web del sistema · PTY nativo</div>
+          </div>
+          <div id="snippets-section" class="snippets-section">
+            <div class="section-heading">
+              <span>COMANDOS FAVORITOS</span
+              ><button
+                id="add-snippet"
+                class="icon-button small"
+                title="Guardar comando"
+                aria-label="Guardar comando"
+              >
+                <i data-lucide="plus" class="icon"></i>
+              </button>
+            </div>
+            <div id="snippet-list" class="snippet-list"></div>
+          </div>
+          <div class="tip-card">
+            <div>
+              <i data-lucide="lightbulb" class="icon"></i
+              ><strong>Un espacio para cada proyecto</strong>
+            </div>
+            <p>
+              Guarda tus paneles, carpetas y perfiles. Retoma la distribución
+              cuando vuelvas.
+            </p>
+            <button id="save-tip" class="text-button">
+              Guardar este espacio<i data-lucide="arrow-right" class="icon"></i>
+            </button>
+          </div>
+        </aside>
+      </div>
+      <footer class="statusbar">
+        <div>
+          <span class="status-dot"></span
+          ><span id="status-shell">Conectando…</span
+          ><span class="footer-divider">/</span><span id="status-cwd">~</span>
+        </div>
+        <div>
+          <span id="status-size">—</span><span class="footer-divider">/</span
+          ><span>UTF-8</span><span class="footer-divider">/</span
+          ><span id="status-platform">LOCAL</span
+          ><button id="status-help">⌘ Atajos</button>
+        </div>
+      </footer>
+    </div>
+    <div id="modal-layer" class="modal-layer" hidden>
+      <section
+        id="modal"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      ></section>
+    </div>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

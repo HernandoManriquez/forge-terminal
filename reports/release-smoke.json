@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "binary": "forge-linux-x64",
+  "mode": "--serve",
+  "checks": [
+    "ELF dynamic libraries load",
+    "Authenticated local UI loads",
+    "Bash profile detected",
+    "Production JavaScript served",
+    "Metrics endpoint responds"
+  ],
+  "javascriptBytes": 349653,
+  "nativeWindow": "NOT TESTED: graphical server unavailable"
+}

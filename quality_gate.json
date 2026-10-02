@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "name": "Go unit and PTY integration (race detector)",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "-coverprofile=reports/coverage.out",
+        "-coverpkg=./src/internal/...",
+        "./src/internal/..."
+      ]
+    },
+    {
+      "name": "Go static checks",
+      "command": [
+        "go",
+        "vet",
+        "./src/internal/..."
+      ]
+    },
+    {
+      "name": "UI layout and input invariants",
+      "command": [
+        "node",
+        "--test",
+        "tests/model.test.mjs"
+      ]
+    },
+    {
+      "name": "UI production bundle",
+      "command": [
+        "node",
+        "scripts/build-ui.mjs"
+      ]
+    },
+    {
+      "name": "Headless executable",
+      "command": [
+        "go",
+        "build",
+        "-buildvcs=false",
+        "-tags",
+        "headless",
+        "-o",
+        "build/forge-headless",
+        "./src/cmd/forge"
+      ]
+    },
+    {
+      "name": "End-to-end UI and real PTY",
+      "command": [
+        "node",
+        "tests/e2e.mjs"
+      ],
+      "platforms": [
+        "linux"
+      ]
+    }
+  ]
+}

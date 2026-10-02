@@ -1,0 +1,8 @@
+node_modules/
+build/
+*.WebView2/
+reports/*.log
+reports/*failure*
+reports/*error*
+reports/coverage.out
+.DS_Store

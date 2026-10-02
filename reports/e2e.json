@@ -1,0 +1,58 @@
+{
+  "passed": 13,
+  "results": [
+    {
+      "name": "Real shell, Unicode and executable output",
+      "status": "PASS"
+    },
+    {
+      "name": "Autocomplete command arguments and quoted paths",
+      "status": "PASS"
+    },
+    {
+      "name": "Nested split layouts and independent PTYs",
+      "status": "PASS"
+    },
+    {
+      "name": "Drag resizing reaches PTY dimensions",
+      "status": "PASS"
+    },
+    {
+      "name": "Find text in terminal output",
+      "status": "PASS"
+    },
+    {
+      "name": "Favorites require explicit execution",
+      "status": "PASS"
+    },
+    {
+      "name": "Palette navigation, focus mode and preferences",
+      "status": "PASS"
+    },
+    {
+      "name": "Multiline paste requires review",
+      "status": "PASS"
+    },
+    {
+      "name": "Export contains real output and stays local",
+      "status": "PASS"
+    },
+    {
+      "name": "Layout and preferences survive reload",
+      "status": "PASS"
+    },
+    {
+      "name": "Process exit and restart",
+      "status": "PASS"
+    },
+    {
+      "name": "Closing one pane removes its session",
+      "status": "PASS"
+    },
+    {
+      "name": "No frontend exceptions or horizontal overflow",
+      "status": "PASS"
+    }
+  ],
+  "errors": []
+}
