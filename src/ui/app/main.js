@@ -51,9 +51,11 @@ import {
   MAX_PANES,
   leaf,
   leaves,
-  splitLeaf,
+  MAX_VISIBLE,
+  replaceLeaf,
+  viewTree,
+  restoreWorkspaces,
   removeLeaf,
-  sanitizeTree,
   normalizeSettings,
   safeCommand,
   shellQuote,
@@ -292,14 +294,14 @@ function paneData(profile, cwd) {
   return {
     id: uid(),
     profile: profile || boot.profiles[0]?.id,
-    cwd: cwd || boot.home,
+    cwd: cwd || boot.startupCwd || boot.home,
     label: "",
     state: "idle",
   };
 }
 function serialize() {
   return {
-    version: 1,
+    version: 2,
     settings,
     snippets,
     history: settings.historyEnabled ? history.slice(-100) : [],
@@ -308,6 +310,8 @@ function serialize() {
     workspaces: workspaces.map((w) => ({
       id: w.id,
       name: w.name,
+      tabs: w.tabs,
+      activePane: w.activePane,
       tree: w.tree,
     })),
     panes: [...panes.values()].map((p) => ({
@@ -358,8 +362,8 @@ function restore() {
     Array.isArray(c.panes) &&
     Array.isArray(c.workspaces)
   ) {
-    for (const p of c.panes.slice(0, MAX_PANES)) {
-      if (typeof p.id !== "string" || typeof p.cwd !== "string") continue;
+    for (const p of c.panes) {
+      if (!p || typeof p.id !== "string" || typeof p.cwd !== "string") continue;
       panes.set(p.id, {
         id: p.id,
         cwd: p.cwd,
@@ -370,29 +374,21 @@ function restore() {
         state: "idle",
       });
     }
-    const seen = new Set();
-    for (const w of c.workspaces.slice(0, 8)) {
-      const tree = sanitizeTree(w.tree, new Set(panes.keys()), seen);
-      if (tree)
-        workspaces.push({
-          id: typeof w.id === "string" ? w.id : uid(),
-          name: String(w.name || "Espacio").slice(0, 40),
-          tree,
-        });
-    }
-    for (const id of panes.keys()) if (!seen.has(id)) panes.delete(id);
+    workspaces = restoreWorkspaces(c.workspaces, new Set(panes.keys()));
+    const saved = new Set(workspaces.flatMap((w) => w.tabs));
+    for (const id of panes.keys()) if (!saved.has(id)) panes.delete(id);
   }
-  if (!workspaces.length) {
-    const p = paneData();
-    panes.set(p.id, p);
-    workspaces = [{ id: uid(), name: "Mi espacio", tree: leaf(p.id) }];
-  }
+  if (!workspaces.length)
+    workspaces = [{ id: uid(), name: "Mi espacio", tabs: [] }];
   activeWS = workspaces.some((w) => w.id === c.activeWS)
     ? c.activeWS
     : workspaces[0].id;
-  activePane = leaves(workspace().tree).includes(c.activePane)
-    ? c.activePane
-    : leaves(workspace().tree)[0];
+  // Launch always gets a fresh shell. Restored tabs remain dormant until selected.
+  const p = paneData();
+  panes.set(p.id, p);
+  workspace().tabs.push(p.id);
+  workspace().tree = leaf(p.id);
+  workspace().activePane = activePane = p.id;
 }
 
 function applySettings() {
@@ -484,11 +480,19 @@ function updateStatus() {
 }
 function setActive(id, focus = true) {
   if (!panes.has(id)) return;
-  activePane = id;
+  const w = workspace();
+  if (!w?.tabs.includes(id)) return;
+  if (!leaves(w.tree).includes(id)) {
+    w.tree = replaceLeaf(w.tree, activePane, id);
+    w.activePane = activePane = id;
+    render();
+    return;
+  }
+  w.activePane = activePane = id;
   for (const p of panes.values()) p.el?.classList.toggle("active", p.id === id);
   renderTabs();
   updateStatus();
-  if (focus) current()?.term?.focus();
+  if (focus && $("#modal-layer").hidden) current()?.term?.focus();
   lastContext = "";
   refreshContext();
   scheduleSave();
@@ -499,6 +503,7 @@ function createPaneDOM(p) {
   const el = document.createElement("section");
   el.className = "terminal-pane";
   el.dataset.pane = p.id;
+  el.id = "pane-" + p.id;
   el.innerHTML = `<header class="pane-header"><span class="pane-dot"></span><span class="pane-label"></span><span class="pane-cwd"></span><div class="pane-actions"><button class="icon-button small restart-pane" title="Reiniciar shell" aria-label="Reiniciar shell">${icon("rotate-ccw")}</button><button class="icon-button small export-pane" title="Exportar salida" aria-label="Exportar salida">${icon("download")}</button><button class="icon-button small rename-pane" title="Renombrar panel" aria-label="Renombrar panel">${icon("more-horizontal")}</button><button class="icon-button small close-pane" title="Cerrar panel" aria-label="Cerrar panel">${icon("x")}</button></div></header><div class="terminal-host"></div><div class="pane-message" hidden></div>`;
   p.el = el;
   p.host = el.querySelector(".terminal-host");
@@ -598,6 +603,13 @@ function createPaneDOM(p) {
 
 function connect(p) {
   if (p.state === "connected" || p.state === "connecting") return;
+  if (liveCount() >= MAX_PANES) {
+    showPaneError(
+      p,
+      "Hay 8 shells en ejecución. Cierra uno y pulsa reiniciar para abrir esta pestaña.",
+    );
+    return;
+  }
   if (!p.profile) {
     showPaneError(p, "No se detectó un shell en este equipo.");
     return;
@@ -638,6 +650,7 @@ function connect(p) {
       fitVisible();
       updateStatus();
       refreshContext();
+      renderTabs();
     }
     if (m.type === "error") {
       p.state = "error";
@@ -662,6 +675,7 @@ function connect(p) {
       );
     }
     updateStatus();
+    renderTabs();
   };
   ws.onerror = () => {};
 }
@@ -747,6 +761,7 @@ function render() {
   refreshIcons();
   requestAnimationFrame(() => {
     fitVisible();
+    if (workspace() !== w) return;
     for (const id of leaves(w.tree)) {
       const p = panes.get(id);
       if (p.state === "idle") connect(p);
@@ -760,10 +775,10 @@ function renderWorkspaces() {
   for (const w of workspaces) {
     const b = document.createElement("button");
     b.className = "workspace-item" + (w.id === activeWS ? " active" : "");
-    b.innerHTML = `${icon("terminal")}<span>${escapeHTML(w.name)}</span><span class="workspace-number">${leaves(w.tree).length}</span>`;
+    b.innerHTML = `${icon("terminal")}<span>${escapeHTML(w.name)}</span><span class="workspace-number">${w.tabs.length}</span>`;
     b.onclick = () => {
       activeWS = w.id;
-      activePane = leaves(w.tree)[0];
+      activePane = w.tabs.includes(w.activePane) ? w.activePane : w.tabs[0];
       render();
       scheduleSave();
     };
@@ -772,31 +787,110 @@ function renderWorkspaces() {
   }
 }
 function renderTabs() {
-  const list = $("#pane-tabs");
+  const list = $("#pane-tabs"),
+    visible = leaves(workspace()?.tree);
   list.replaceChildren();
-  for (const id of leaves(workspace()?.tree)) {
+  for (const id of workspace()?.tabs || []) {
     const p = panes.get(id),
-      b = document.createElement("button");
-    b.className = "pane-tab" + (id === activePane ? " active" : "");
+      wrap = document.createElement("div"),
+      b = document.createElement("button"),
+      close = document.createElement("button");
+    wrap.className = "tab-wrap";
+    b.className =
+      "pane-tab" +
+      (id === activePane ? " active" : "") +
+      (visible.includes(id) ? " in-view" : "") +
+      (p.state === "idle" ? " dormant" : "");
     b.textContent = p.label || p.profile || "Shell";
-    b.title = "Enfocar " + b.textContent;
+    b.dataset.pane = id;
+    b.role = "tab";
+    b.setAttribute("aria-selected", String(id === activePane));
+    b.setAttribute("aria-controls", "pane-" + id);
+    b.title =
+      b.textContent +
+      " · " +
+      p.cwd +
+      (p.state === "idle"
+        ? " · Guardada: se iniciará al abrir"
+        : visible.includes(id)
+          ? " · Visible"
+          : " · En segundo plano");
     b.onclick = () => setActive(id);
-    list.append(b);
+    close.className = "tab-close";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Cerrar pestaña " + b.textContent);
+    close.title = "Cerrar pestaña";
+    close.onclick = () => closePaneDialog(id);
+    wrap.append(b, close);
+    list.append(wrap);
   }
   for (const p of panes.values())
     p.el?.classList.toggle("active", p.id === activePane);
+  for (const n of [1, 2, 3]) {
+    const b = $("#view-" + n);
+    b.classList.toggle("selected", visible.length === n);
+    b.setAttribute("aria-pressed", String(visible.length === n));
+  }
+  list
+    .querySelector(".active")
+    ?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
-function newPanel(profile, cwd, axis = "row") {
-  if (panes.size >= MAX_PANES) {
-    toast("Máximo 8 paneles. Cierra uno para liberar recursos.");
+function liveCount() {
+  return [...panes.values()].filter(
+    (p) => p.state === "connected" || p.state === "connecting",
+  ).length;
+}
+function newPanel(profile, cwd) {
+  if (liveCount() >= MAX_PANES) {
+    toast("Máximo 8 shells en ejecución. Cierra uno para liberar recursos.");
     return;
   }
-  const p = paneData(profile, cwd);
+  const p = paneData(profile, cwd),
+    w = workspace();
   panes.set(p.id, p);
-  workspace().tree = splitLeaf(workspace().tree, activePane, p.id, axis);
-  activePane = p.id;
+  w.tabs.push(p.id);
+  w.tree = replaceLeaf(w.tree, activePane, p.id);
+  w.activePane = activePane = p.id;
   render();
   scheduleSave();
+}
+function setView(count, axis = workspace().tree?.axis || "row") {
+  const w = workspace();
+  count = Math.max(1, Math.min(MAX_VISIBLE, count));
+  if (leaves(w.tree).length === count && (count === 1 || w.tree.axis === axis))
+    return;
+  const visible = [
+    activePane,
+    ...leaves(w.tree).filter((id) => id !== activePane),
+  ];
+  const ids = [...new Set([...visible, ...w.tabs])].slice(0, count);
+  const needed =
+    count -
+    ids.length +
+    ids.filter((id) => panes.get(id).state === "idle").length;
+  if (liveCount() + needed > MAX_PANES) {
+    toast(
+      "Cierra un shell para mostrar más terminales. Máximo 8 en ejecución.",
+    );
+    return;
+  }
+  while (ids.length < count) {
+    const p = paneData(current()?.profile, current()?.cwd);
+    panes.set(p.id, p);
+    w.tabs.push(p.id);
+    ids.push(p.id);
+  }
+  // Retain positions when growing/changing orientation; keep the active pane when reducing.
+  const ordered = [
+    ...leaves(w.tree).filter((id) => ids.includes(id)),
+    ...ids.filter((id) => !leaves(w.tree).includes(id)),
+  ];
+  w.tree = viewTree(ordered, axis);
+  render();
+  scheduleSave();
+}
+function expandView(axis) {
+  setView(Math.min(MAX_VISIBLE, leaves(workspace().tree).length + 1), axis);
 }
 function disposePane(p) {
   p.state = "closing";
@@ -807,30 +901,43 @@ function disposePane(p) {
   panes.delete(p.id);
 }
 function closePane(id) {
-  const w = workspaces.find((w) => leaves(w.tree).includes(id));
+  const w = workspaces.find((w) => w.tabs.includes(id));
   if (!w) return;
-  const tree = removeLeaf(w.tree, id);
+  const wasActive = activePane === id;
+  w.tabs = w.tabs.filter((tab) => tab !== id);
+  w.tree = removeLeaf(w.tree, id);
   disposePane(panes.get(id));
-  if (tree) {
-    w.tree = tree;
-  } else {
-    workspaces = workspaces.filter((v) => v.id !== w.id);
+  if (!w.tabs.length) workspaces = workspaces.filter((v) => v !== w);
+  else {
+    if (!w.tree) w.tree = leaf(w.tabs[0]);
+    if (w.activePane === id) w.activePane = leaves(w.tree)[0];
   }
   if (!workspaces.length) {
     const p = paneData();
     panes.set(p.id, p);
-    workspaces.push({ id: uid(), name: "Mi espacio", tree: leaf(p.id) });
+    workspaces.push({
+      id: uid(),
+      name: "Mi espacio",
+      tabs: [p.id],
+      activePane: p.id,
+      tree: leaf(p.id),
+    });
   }
   if (!workspaces.some((w) => w.id === activeWS)) activeWS = workspaces[0].id;
-  activePane = leaves(workspace().tree)[0];
+  if (wasActive || !workspace().tabs.includes(activePane))
+    activePane = workspace().activePane;
   render();
   scheduleSave();
 }
 function closePaneDialog(id) {
+  if (panes.get(id)?.state === "idle") {
+    closePane(id);
+    return;
+  }
   confirmDialog(
     "Cerrar terminal",
-    "Se cerrará el shell de este panel y sus procesos asociados.",
-    "Cerrar panel",
+    "Se cerrará el shell de esta pestaña y sus procesos asociados.",
+    "Cerrar pestaña",
     () => closePane(id),
   );
 }
@@ -846,7 +953,9 @@ function restartDialog(id) {
       p.ws = null;
       p.term.reset();
       p.state = "idle";
-      setTimeout(() => connect(p), 200);
+      setTimeout(() => {
+        if (panes.has(id)) connect(p);
+      }, 200);
     },
   );
 }
@@ -868,9 +977,12 @@ async function refreshContext() {
     updateStatus();
     $("#git-branch").textContent = info.git?.branch || "Sin repositorio";
     $("#git-status").textContent = info.git
-      ? info.git.modified + " archivos rastreados modificados"
+      ? info.git.modified +
+        (info.git.truncated ? "+" : "") +
+        " archivos con cambios · Ver"
       : "El estado Git aparece aquí";
     $("#git-context").classList.toggle("has-git", !!info.git);
+    $("#git-context").disabled = !info.git;
     if (lastContext !== p.cwd) {
       lastContext = p.cwd;
       loadFiles(p.cwd);
@@ -878,6 +990,151 @@ async function refreshContext() {
     }
   } catch {}
 }
+async function openGit() {
+  const p = current();
+  if (!p?.session || p.state !== "connected") return;
+  showModal(
+    `<div class="modal-head"><div><span class="eyebrow">REPOSITORIO LOCAL</span><h2 id="modal-title">Cambios y ramas</h2></div><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><div class="git-detail-body"><div class="git-summary"><div><strong id="git-detail-branch">Cargando…</strong><div id="git-root" class="muted small-text"></div></div><button id="git-refresh" class="button subtle">${icon("refresh-cw")}Actualizar</button></div><p id="git-detail-error" role="status"></p><div class="git-columns"><div class="git-list-column"><h3>Archivos con cambios <span id="git-change-count"></span></h3><div id="git-files" class="git-files"></div><h3>Ramas locales y remotas</h3><div id="git-branches" class="git-branches"></div></div><section class="git-diff-column" aria-label="Diferencias del archivo"><h3 id="git-diff-title">Selecciona un archivo</h3><p class="muted small-text">Preparado = incluido en el próximo commit. Sin preparar = cambios de trabajo.</p><div id="git-diff" class="git-diff"></div></section></div><p class="settings-note">Solo lectura. Muestra las ramas conocidas por este repositorio, sin conectarse a remotos.</p></div>`,
+  );
+  $("#modal").classList.add("git-modal");
+  let closed = false,
+    epoch = 0,
+    diffEpoch = 0,
+    selectedPath = "";
+  modalCleanup = () => {
+    closed = true;
+    epoch++;
+    diffEpoch++;
+  };
+  const diffView = async (change) => {
+    selectedPath = change.path;
+    const request = ++diffEpoch;
+    $("#git-diff-title").textContent = change.path;
+    $("#git-diff").textContent = "Cargando diferencias…";
+    for (const b of document.querySelectorAll(".git-file"))
+      b.classList.toggle("selected", b.dataset.path === change.path);
+    try {
+      const result = await api(
+        "/api/git/diff?" +
+          new URLSearchParams({ id: p.session, path: change.path }),
+      );
+      if (closed || request !== diffEpoch) return;
+      const target = $("#git-diff");
+      target.replaceChildren();
+      const blocks = result.untracked
+        ? [["Sin seguimiento · contenido actual", result.preview]]
+        : [
+            ["Preparado (staged)", result.staged],
+            ["Sin preparar (working tree)", result.unstaged],
+          ];
+      for (const [label, text] of blocks) {
+        const heading = document.createElement("h4"),
+          pre = document.createElement("pre");
+        heading.textContent = label;
+        pre.tabIndex = 0;
+        const fragment = document.createDocumentFragment();
+        for (const line of (text || "Sin diferencias de texto.").split("\n")) {
+          const span = document.createElement("span");
+          span.className =
+            !result.untracked && line.startsWith("+")
+              ? "diff-add"
+              : !result.untracked && line.startsWith("-")
+                ? "diff-remove"
+                : line.startsWith("@@")
+                  ? "diff-hunk"
+                  : "";
+          span.textContent = line + "\n";
+          fragment.append(span);
+        }
+        pre.append(fragment);
+        target.append(heading, pre);
+      }
+      if (result.truncated) {
+        const note = document.createElement("p");
+        note.textContent =
+          "Vista previa limitada a 256 KiB por sección. Usa git diff en la terminal para ver todo.";
+        target.append(note);
+      }
+    } catch (error) {
+      if (!closed && request === diffEpoch)
+        $("#git-diff").textContent = error.message;
+    }
+  };
+  const load = async () => {
+    const request = ++epoch;
+    diffEpoch++;
+    $("#git-refresh").disabled = true;
+    $("#git-detail-error").textContent = "";
+    try {
+      const result = await api(
+        "/api/git?" + new URLSearchParams({ id: p.session }),
+      );
+      if (closed || request !== epoch) return;
+      $("#git-detail-branch").textContent =
+        result.branch + (result.detached ? " · HEAD separado" : "");
+      $("#git-root").textContent = result.root;
+      $("#git-change-count").textContent = "(" + result.changes.length + ")";
+      $("#git-files").replaceChildren();
+      for (const change of result.changes) {
+        const button = document.createElement("button");
+        button.className = "git-file";
+        button.dataset.path = change.path;
+        button.title = change.original
+          ? change.original + " → " + change.path
+          : change.path;
+        const status = document.createElement("code"),
+          name = document.createElement("span");
+        status.textContent = change.untracked
+          ? "??"
+          : (change.index + change.worktree).replaceAll(" ", "·");
+        name.textContent = change.path;
+        button.append(status, name);
+        button.onclick = () => diffView(change);
+        $("#git-files").append(button);
+      }
+      $("#git-branches").replaceChildren();
+      for (const branch of result.branches) {
+        const row = document.createElement("div"),
+          name = document.createElement("strong"),
+          tag = document.createElement("span");
+        row.className = "git-branch-row" + (branch.current ? " current" : "");
+        name.textContent = branch.name;
+        tag.textContent = branch.current
+          ? "ACTUAL"
+          : branch.remote
+            ? "REMOTA"
+            : "LOCAL";
+        row.title = branch.upstream
+          ? "Seguimiento: " + branch.upstream
+          : branch.name;
+        row.append(name, tag);
+        $("#git-branches").append(row);
+      }
+      if (!result.branches.length)
+        $("#git-branches").textContent = "No hay ramas disponibles.";
+      if (result.truncated)
+        $("#git-detail-error").textContent =
+          "La lista está limitada por tamaño; usa git status o git branch para verla completa.";
+      if (!result.changes.length) {
+        $("#git-files").textContent = "Árbol de trabajo limpio.";
+        $("#git-diff-title").textContent = "Sin cambios";
+        $("#git-diff").textContent = "No hay diferencias pendientes.";
+      } else
+        await diffView(
+          result.changes.find((c) => c.path === selectedPath) ||
+            result.changes[0],
+        );
+    } catch (error) {
+      if (!closed && request === epoch)
+        $("#git-detail-error").textContent = error.message;
+    } finally {
+      if (!closed && request === epoch) $("#git-refresh").disabled = false;
+    }
+  };
+  $("#git-refresh").onclick = load;
+  await load();
+}
+
 async function refreshMetrics() {
   if (
     document.hidden ||
@@ -1103,6 +1360,7 @@ function closeModal(focus = true) {
   paletteOpen = false;
   $("#modal-layer").hidden = true;
   $("#modal").innerHTML = "";
+  $("#modal").classList.remove("git-modal");
   if (focus) {
     if (returnFocus?.isConnected) returnFocus.focus();
     else current()?.term?.focus();
@@ -1133,23 +1391,22 @@ function confirmDialog(title, description, action, callback) {
   };
 }
 function openProfileDialog(
-  cwd = current()?.cwd || boot.home,
+  cwd = current()?.cwd || boot.startupCwd || boot.home,
   newWorkspace = false,
 ) {
-  if (panes.size >= MAX_PANES) {
-    toast("Límite de 8 paneles. Cierra uno antes de crear otro.");
+  if (liveCount() >= MAX_PANES) {
+    toast("Límite de 8 shells en ejecución. Cierra uno antes de crear otro.");
     return;
   }
   showModal(
-    `<div class="modal-head"><div><span class="eyebrow">TU SIGUIENTE SESIÓN</span><h2 id="modal-title">${newWorkspace ? "Nuevo espacio" : "Nueva terminal"}</h2></div><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><form id="profile-form">${newWorkspace ? '<label class="field">Nombre del espacio<input id="new-space-name" value="Nuevo proyecto" required maxlength="40"></label>' : ""}<label class="field">Perfil de shell<select id="new-profile">${boot.profiles.map((p) => `<option value="${escapeHTML(p.id)}" ${p.id === current()?.profile ? "selected" : ""}>${escapeHTML(p.name)}</option>`).join("")}</select></label><label class="field">Carpeta inicial<input id="new-cwd" value="${escapeHTML(cwd)}" required></label>${newWorkspace ? "" : '<label class="field">Distribución<select id="new-axis"><option value="row">Dividir en columnas</option><option value="col">Dividir en filas</option></select></label>'}<p class="form-error" id="profile-error"></p><div class="modal-footer"><button type="button" class="button cancel">Cancelar</button><button class="button primary">${icon("plus")}Crear</button></div></form>`,
+    `<div class="modal-head"><div><span class="eyebrow">TU SIGUIENTE SESIÓN</span><h2 id="modal-title">${newWorkspace ? "Nuevo espacio" : "Nueva terminal"}</h2></div><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><form id="profile-form">${newWorkspace ? '<label class="field">Nombre del espacio<input id="new-space-name" value="Nuevo proyecto" required maxlength="40"></label>' : ""}<label class="field">Perfil de shell<select id="new-profile">${boot.profiles.map((p) => `<option value="${escapeHTML(p.id)}" ${p.id === current()?.profile ? "selected" : ""}>${escapeHTML(p.name)}</option>`).join("")}</select></label><label class="field">Carpeta inicial<input id="new-cwd" value="${escapeHTML(cwd)}" required></label><p class="settings-note">Se abre en una pestaña activa. Las anteriores quedan en segundo plano.</p><p class="form-error" id="profile-error"></p><div class="modal-footer"><button type="button" class="button cancel">Cancelar</button><button class="button primary">${icon("plus")}Crear</button></div></form>`,
   );
   $(".cancel").onclick = () => closeModal();
   $("#profile-form").onsubmit = async (e) => {
     e.preventDefault();
     const profile = $("#new-profile").value,
       cwd = $("#new-cwd").value,
-      name = $("#new-space-name")?.value,
-      axis = $("#new-axis")?.value;
+      name = $("#new-space-name")?.value;
     try {
       const result = await api(
         "/api/files?" + new URLSearchParams({ path: cwd }),
@@ -1161,6 +1418,8 @@ function openProfileDialog(
         const w = {
           id: uid(),
           name: name || "Nuevo espacio",
+          tabs: [p.id],
+          activePane: p.id,
           tree: leaf(p.id),
         };
         workspaces.push(w);
@@ -1168,7 +1427,7 @@ function openProfileDialog(
         activePane = p.id;
         render();
         scheduleSave();
-      } else newPanel(profile, result.path, axis);
+      } else newPanel(profile, result.path);
     } catch (error) {
       $("#profile-error").textContent = error.message;
     }
@@ -1250,7 +1509,7 @@ function settingsDialog() {
       ["showHidden", "Mostrar archivos ocultos"],
       ["showMetrics", "Memoria del motor"],
       ["showSnippets", "Comandos favoritos"],
-      ["restore", "Restaurar distribución al abrir"],
+      ["restore", "Restaurar pestañas en segundo plano"],
       ["historyEnabled", "Guardar historial del compositor"],
     ]
       .map(
@@ -1259,7 +1518,7 @@ function settingsDialog() {
       )
       .join(
         "",
-      )}<p class="settings-note">Se restauran carpetas y paneles con shells nuevos. Los procesos y la salida anterior no se recuperan. El historial del compositor se guarda sin cifrar solo si lo habilitas.</p><button id="clear-history" class="text-button">Borrar historial del compositor</button><div class="settings-path"><span class="label">CONFIGURACIÓN LOCAL</span><code>${escapeHTML(boot.configPath)}</code></div></div><div class="modal-footer"><span class="muted small-text">Los cambios se guardan automáticamente</span><button id="done-settings" class="button primary">Listo</button></div>`,
+      )}<p class="settings-note">Se guardan carpetas y pestañas. Las restauradas inician un shell al abrirlas; los procesos y la salida anterior no se recuperan. El historial del compositor se guarda sin cifrar solo si lo habilitas.</p><button id="clear-history" class="text-button">Borrar historial del compositor</button><div class="settings-path"><span class="label">CONFIGURACIÓN LOCAL</span><code>${escapeHTML(boot.configPath)}</code></div></div><div class="modal-footer"><span class="muted small-text">Los cambios se guardan automáticamente</span><button id="done-settings" class="button primary">Listo</button></div>`,
   );
   for (const b of document.querySelectorAll("[data-theme-choice]"))
     b.onclick = () => {
@@ -1306,7 +1565,7 @@ const shortcutRows = [
   ["Ctrl + Shift + F", "Modo enfoque"],
   ["Ctrl + Shift + S", "Guardar espacio"],
   ["Ctrl + Shift + W", "Cerrar panel"],
-  ["Alt + 1…8", "Enfocar panel"],
+  ["Alt + 1…8", "Abrir pestaña"],
   ["Tab", "Autocompletar (shell o compositor)"],
   ["Ctrl + C", "Interrumpir programa en terminal"],
   ["Ctrl + Shift + C", "Copiar selección"],
@@ -1330,14 +1589,9 @@ function actions() {
       "Dividir en columnas",
       "Ctrl Shift D",
       "columns-2",
-      () => newPanel(current().profile, current().cwd, "row"),
+      () => expandView("row"),
     ],
-    [
-      "Dividir en filas",
-      "Ctrl Shift E",
-      "rows-2",
-      () => newPanel(current().profile, current().cwd, "col"),
-    ],
+    ["Dividir en filas", "Ctrl Shift E", "rows-2", () => expandView("col")],
     ["Guardar espacio", "Ctrl Shift S", "save", saveWorkspace],
     ["Renombrar espacio", "", "more-horizontal", renameWorkspace],
     ["Modo enfoque", "Ctrl Shift F", "maximize", toggleFocus],
@@ -1475,10 +1729,12 @@ function bindEvents() {
   };
   $("#new-workspace").onclick = () => openProfileDialog(current().cwd, true);
   $("#profile-new").onclick = () => openProfileDialog();
+  for (const n of [1, 2, 3]) $("#view-" + n).onclick = () => setView(n);
+  $("#git-context").onclick = openGit;
   $("#split-row").onclick = () =>
-    newPanel(current().profile, current().cwd, "row");
+    setView(leaves(workspace().tree).length, "row");
   $("#split-col").onclick = () =>
-    newPanel(current().profile, current().cwd, "col");
+    setView(leaves(workspace().tree).length, "col");
   $("#save-workspace").onclick = saveWorkspace;
   $("#save-tip").onclick = saveWorkspace;
   $("#help-button").onclick = helpDialog;
@@ -1574,7 +1830,7 @@ function bindEvents() {
     e.preventDefault();
     const k = e.key.toLowerCase();
     if (e.altKey) {
-      const id = leaves(workspace().tree)[Number(k) - 1];
+      const id = workspace().tabs[Number(k) - 1];
       if (id) setActive(id);
       return;
     }
@@ -1589,8 +1845,8 @@ function bindEvents() {
     if (e.shiftKey) {
       const action = {
         t: () => openProfileDialog(),
-        d: () => newPanel(current().profile, current().cwd, "row"),
-        e: () => newPanel(current().profile, current().cwd, "col"),
+        d: () => expandView("row"),
+        e: () => expandView("col"),
         g: openSearch,
         f: toggleFocus,
         s: saveWorkspace,

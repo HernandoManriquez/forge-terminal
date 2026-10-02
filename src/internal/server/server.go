@@ -26,6 +26,7 @@ const MaxSessions = 8
 type Server struct {
 	assets                          fs.FS
 	configDir, version, token, host string
+	startupCwd                      string
 	listener                        net.Listener
 	http                            *http.Server
 	mu                              sync.Mutex
@@ -40,6 +41,10 @@ type Server struct {
 }
 
 func New(assets fs.FS, configDir, version string) (*Server, error) {
+	startupCwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("cannot read launch directory: %w", err)
+	}
 	if configDir == "" {
 		base, err := os.UserConfigDir()
 		if err != nil {
@@ -54,7 +59,7 @@ func New(assets fs.FS, configDir, version string) (*Server, error) {
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	return &Server{assets: assets, configDir: configDir, version: version, token: hex.EncodeToString(b), sessions: map[string]*session{}, slots: make(chan struct{}, MaxSessions), closed: make(chan struct{}), profiles: terminal.Profiles()}, nil
+	return &Server{assets: assets, startupCwd: startupCwd, configDir: configDir, version: version, token: hex.EncodeToString(b), sessions: map[string]*session{}, slots: make(chan struct{}, MaxSessions), closed: make(chan struct{}), profiles: terminal.Profiles()}, nil
 }
 
 func (s *Server) Start() error {
@@ -69,6 +74,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("POST /api/config", s.saveConfig)
 	mux.HandleFunc("GET /api/files", s.files)
 	mux.HandleFunc("GET /api/context", s.context)
+	mux.HandleFunc("GET /api/git", s.gitDetails)
+	mux.HandleFunc("GET /api/git/diff", s.gitDiff)
 	mux.HandleFunc("GET /api/completions", s.completions)
 	mux.HandleFunc("GET /api/metrics", s.metrics)
 	mux.HandleFunc("POST /api/export", s.exportOutput)
@@ -154,7 +161,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 	if err == nil && json.Valid(b) {
 		config = b
 	}
-	writeJSON(w, map[string]any{"version": s.version, "platform": runtime.GOOS, "home": home, "profiles": s.profiles, "config": config, "maxSessions": MaxSessions, "configPath": filepath.Join(s.configDir, "settings.json")})
+	writeJSON(w, map[string]any{"version": s.version, "platform": runtime.GOOS, "home": home, "startupCwd": s.startupCwd, "profiles": s.profiles, "config": config, "maxSessions": MaxSessions, "configPath": filepath.Join(s.configDir, "settings.json")})
 }
 
 func (s *Server) saveConfig(w http.ResponseWriter, r *http.Request) {

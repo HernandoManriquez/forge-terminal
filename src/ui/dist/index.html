@@ -14,7 +14,7 @@
         <div class="brand">
           <img src="/icon.svg" alt="" width="31" height="31" /><strong
             >forge<span>terminal</span></strong
-          ><span class="version">MVP 0.1</span>
+          ><span class="version">MVP 0.2</span>
         </div>
         <div class="top-path">
           <i data-lucide="monitor" class="icon"></i><span>Local</span
@@ -154,20 +154,55 @@
             </div>
           </div>
           <div class="terminal-toolbar">
-            <div id="pane-tabs" class="pane-tabs"></div>
+            <div
+              id="pane-tabs"
+              class="pane-tabs"
+              role="tablist"
+              aria-label="Terminales"
+            ></div>
             <div class="layout-actions">
+              <div
+                class="view-switch"
+                role="group"
+                aria-label="Terminales visibles"
+              >
+                <button
+                  id="view-1"
+                  title="Una terminal visible"
+                  aria-label="Mostrar 1 terminal"
+                  aria-pressed="true"
+                >
+                  1
+                </button>
+                <button
+                  id="view-2"
+                  title="Dos terminales en paralelo"
+                  aria-label="Mostrar 2 terminales"
+                  aria-pressed="false"
+                >
+                  2
+                </button>
+                <button
+                  id="view-3"
+                  title="Tres terminales en paralelo"
+                  aria-label="Mostrar 3 terminales"
+                  aria-pressed="false"
+                >
+                  3
+                </button>
+              </div>
               <button
                 id="split-row"
                 class="icon-button small"
-                title="Dividir en columnas · Ctrl+Shift+D"
-                aria-label="Dividir en columnas"
+                title="Orientar en columnas"
+                aria-label="Orientar en columnas"
               >
                 <i data-lucide="columns-2" class="icon"></i></button
               ><button
                 id="split-col"
                 class="icon-button small"
-                title="Dividir en filas · Ctrl+Shift+E"
-                aria-label="Dividir en filas"
+                title="Orientar en filas"
+                aria-label="Orientar en filas"
               >
                 <i data-lucide="rows-2" class="icon"></i></button
               ><span class="divider"></span
@@ -280,13 +315,19 @@
               ></i>
             </button>
           </div>
-          <div id="git-context" class="git-card">
+          <button
+            id="git-context"
+            class="git-card"
+            disabled
+            title="Ver cambios y ramas"
+            aria-haspopup="dialog"
+          >
             <i data-lucide="git-branch" class="icon"></i>
             <div>
               <strong id="git-branch">Sin repositorio</strong
               ><span id="git-status">El estado Git aparece aquí</span>
             </div>
-          </div>
+          </button>
           <div id="metrics-section" class="metrics-section">
             <div class="section-heading">
               <span>MOTOR</span><i data-lucide="activity" class="icon"></i>

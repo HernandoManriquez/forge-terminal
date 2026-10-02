@@ -1,7 +1,7 @@
 # Forge Terminal
 
 Una terminal de escritorio para Windows y Linux, con paneles ajustables,
-autocompletado y espacios de trabajo. **MVP 0.1.0 · x64 · MIT**
+autocompletado y espacios de trabajo. **MVP 0.2.0 · x64 · MIT**
 
 ![Forge Terminal](reports/forge-terminal.png)
 
@@ -11,7 +11,7 @@ No necesitas instalar Go, Node.js ni npm para usar los binarios.
 
 ### Windows
 
-1. Descomprime el paquete `forge-terminal-0.1.0-windows-x64.zip`.
+1. Descomprime el paquete `forge-terminal-0.2.0-windows-x64.zip`.
 2. Abre `forge.exe`.
 3. Selecciona tu shell desde **Nueva terminal**: PowerShell 7, Windows PowerShell,
    CMD o WSL, según lo instalado en tu equipo.
@@ -26,7 +26,7 @@ en Windows no se pudo validar durante esta entrega.
 
 ### Linux
 
-Descomprime `forge-terminal-0.1.0-linux-x64.zip` e instala el motor gráfico del
+Descomprime `forge-terminal-0.2.0-linux-x64.zip` e instala el motor gráfico del
 sistema si todavía no lo tienes:
 
 ```bash
@@ -67,14 +67,14 @@ solo escucha en `127.0.0.1`; no queda publicado en la red.
 | Función | Uso |
 |---|---|
 | Terminal real | Ejecuta tus programas, SSH, editores de consola y herramientas habituales. Usa PTY en Linux y ConPTY en Windows. |
-| Paneles | Divide en columnas o filas, combina divisiones, arrastra separadores y renombra paneles. Máximo ocho paneles entre todos los espacios. |
+| Pestañas y paneles | Nueva terminal abre una pestaña activa; las anteriores siguen en segundo plano. Botones **1 / 2 / 3** para elegir cuántas terminales ver, con orientación en columnas o filas y separadores ajustables. Máximo ocho shells en ejecución entre todos los espacios. |
 | Espacios | Agrupa carpetas y shells por proyecto. Doble clic en el nombre para renombrar. Se guarda la distribución. |
 | Compositor | Escribe abajo y usa Tab para elegir una sugerencia. **Insertar** envía texto; **Ejecutar** también envía Enter al panel activo. |
 | Autocompletado | Comandos de PATH, carpetas, archivos, favoritos y argumentos de Git, Docker, Podman, systemctl, npm y Go. |
 | Tab del shell | Dentro de la terminal se conserva el completado nativo de Bash, Zsh, Fish o PowerShell. |
 | Favoritos | Guarda comandos propios y selecciónalos para revisarlos en el compositor. Nunca se ejecutan al seleccionarlos. |
 | Explorador | Navega carpetas; clic derecho en una carpeta abre el selector de terminal allí. Un archivo inserta su ruta en el compositor. |
-| Contexto Git | Muestra rama y cantidad de archivos **rastreados** modificados en el directorio activo. |
+| Contexto Git | Pulsa la rama para ver archivos modificados, nuevos, renombrados o eliminados, diferencias preparadas y sin preparar y ramas locales/remotas conocidas. Incluye **Actualizar**; el visor es de solo lectura. |
 | Paleta | Encuentra acciones, preferencias y favoritos con Ctrl+K. |
 | Búsqueda | Busca en las líneas que retiene cada terminal. |
 | Enfoque | Oculta paneles laterales para dar espacio al terminal. |
@@ -96,9 +96,9 @@ entrada normal. El pegado de varias líneas pide revisar el contenido.
 | `Ctrl+K` | Paleta de comandos |
 | `Ctrl+Espacio` | Enfocar el compositor |
 | `Ctrl+Shift+T` | Nueva terminal |
-| `Ctrl+Shift+D` | Dividir en columnas |
-| `Ctrl+Shift+E` | Dividir en filas |
-| `Alt+1` … `Alt+8` | Enfocar panel dentro del espacio |
+| `Ctrl+Shift+D` | Añadir una vista en columnas (hasta 3) |
+| `Ctrl+Shift+E` | Añadir una vista en filas (hasta 3) |
+| `Alt+1` … `Alt+8` | Abrir una de las primeras ocho pestañas del espacio |
 | `Ctrl+Shift+G` | Buscar en la salida |
 | `Ctrl+Shift+F` | Alternar modo enfoque |
 | `Ctrl+Shift+S` | Guardar espacio |
@@ -124,8 +124,15 @@ Las preferencias se guardan en:
 Puedes indicar otra carpeta con `--config-dir RUTA`. El motor web también puede
 crear su propio directorio de caché, en particular `forge.exe.WebView2` en Windows.
 
-Al reabrir se restauran nombres, carpetas, perfiles y paneles. **Se crean shells
-nuevos:** los procesos anteriores y su salida no sobreviven al cierre. La salida
+Al iniciar Forge se abre **una terminal nueva en el directorio de trabajo del
+proceso que lo lanzó**, con vista de un solo panel. No se usa la carpeta del
+binario ni la carpeta guardada del último panel para esa sesión nueva.
+
+Las pestañas guardadas conservan nombre, carpeta y perfil y quedan **suspendidas
+en segundo plano**: no crean shells ni instancias de xterm hasta seleccionarlas
+o mostrarlas con los botones 2/3. La configuración 0.1 se migra automáticamente;
+se preservan incluso las ocho pestañas anteriores y se añade la de lanzamiento.
+**Los procesos anteriores y su salida no sobreviven al cierre.** La salida
 no se graba automáticamente. El historial del compositor está deshabilitado por
 defecto; si lo habilitas, conserva hasta 100 entradas locales sin cifrado. No
 registra las teclas de la terminal ni lee el historial privado del shell.
@@ -136,14 +143,61 @@ editar sus archivos. En CMD el contexto conserva la carpeta inicial. En WSL,
 los archivos del explorador son del host Windows y el completado de rutas Linux
 se usa mediante Tab dentro de WSL.
 
+
+### Iniciar en la carpeta de un proyecto
+
+```powershell
+Set-Location 'D:\Proyectos\mi-proyecto'
+& 'C:\Herramientas\Forge\forge.exe'
+```
+
+```bash
+cd ~/Development/projects/mi-proyecto
+~/.local/bin/forge
+```
+
+Al usar un acceso directo, su opción **Iniciar en** determina la carpeta inicial.
+Las nuevas pestañas creadas dentro de Forge toman la carpeta de la terminal
+activa, editable antes de abrirlas. Los scripts de inicio del propio shell
+pueden cambiar su directorio.
+
+### Elegir terminales paralelas
+
+1. Abre pestañas con **Nueva terminal**.
+2. Pulsa **2** o **3** para mostrar terminales en paralelo. Se reutilizan las
+   pestañas existentes; solo se crean adicionales si faltan.
+3. Pulsa un panel para activarlo. Al seleccionar una pestaña oculta, sustituye
+   al panel activo y mantiene los demás visibles.
+4. Pulsa **1** para dejar solo la activa. Las demás siguen en segundo plano.
+5. La **×** de cada pestaña permite cerrarla sin activarla. Las suspendidas se
+   eliminan sin arrancar ningún proceso; cerrar un shell en ejecución pide confirmar.
+
+El límite de ocho se aplica a shells en ejecución, no a las pestañas suspendidas.
+Si alcanzas el límite, cierra una sesión y pulsa reiniciar en la pestaña pendiente.
+
+### Visor de Git
+
+- La tarjeta muestra el repositorio de la terminal activa. Los cambios se
+  consultan desde su raíz, aunque el shell esté en una subcarpeta.
+- El estado incluye archivos sin seguimiento; las carpetas nuevas se agrupan
+  como las muestra `git status` y no tienen vista previa de archivo.
+- Las diferencias separan índice (**Preparado**) y copia de trabajo (**Sin preparar**).
+- Los archivos nuevos de texto tienen vista previa; los binarios y enlaces se indican.
+- Las ramas remotas son referencias conocidas localmente; no se ejecuta `fetch`
+  ni se cambia de rama al pulsarlas.
+- Vista previa limitada a 256 KiB por sección y consulta con tiempo máximo de 4 s.
+  Se indica si el resultado quedó truncado. Requiere Git instalado en PATH.
+
 ## Tamaño y recursos
 
 - Binarios de aproximadamente **8 MB**, con HTML, CSS, JavaScript e iconos
   incluidos. Consulta los tamaños exactos en `reports/validation.md`.
 - Utiliza la vista web del sistema; no incorpora Electron ni otro navegador
   completo en el paquete.
-- Una sola vista web para todos los paneles; cada panel tiene su propio shell.
-- Hasta ocho paneles. Scrollback predeterminado: 3.000 líneas por panel.
+- Una sola vista web; hasta ocho shells en ejecución, como máximo tres visibles.
+- Las pestañas guardadas sin abrir no tienen proceso ni buffer de terminal.
+- Las terminales iniciadas continúan ejecutándose al quedar en segundo plano.
+- Scrollback predeterminado: 3.000 líneas por terminal iniciada.
 - Control de flujo: limita datos pendientes entre PTY y renderizado.
 - Sin animaciones permanentes ni parpadeo del cursor. Métricas espaciadas cada
   cinco segundos; actualización suspendida cuando el documento está oculto.
@@ -221,7 +275,7 @@ npx playwright install chromium
 python3 scripts/quality_gate.py
 ```
 
-El gate ejecuta pruebas Go con detector de carreras, `go vet`, pruebas del árbol
+El gate ejecuta pruebas Go con detector de carreras, `go vet`, pruebas de pestañas, migración y árbol
 de paneles, bundle de producción y E2E sobre un PTY Linux real. Genera reportes
 en `reports/`. Las E2E Linux incluyen comando real, Unicode, completado, paneles,
 resize, búsqueda, favoritos, paleta, temas, pegado, exportación, restauración,

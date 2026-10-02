@@ -106,12 +106,10 @@ func (s *Server) context(w http.ResponseWriter, r *http.Request) {
 	}
 	var git any
 	if branch != "" {
-		status := gitOutput(ctx, cwd, "status", "--porcelain=v1", "--untracked-files=no")
-		modified := 0
-		if status != "" {
-			modified = len(strings.Split(status, "\n"))
+		changes, truncated, err := gitChanges(ctx, cwd)
+		if err == nil {
+			git = map[string]any{"branch": branch, "modified": len(changes), "truncated": truncated}
 		}
-		git = map[string]any{"branch": branch, "modified": modified}
 	}
 	writeJSON(w, map[string]any{"cwd": cwd, "pid": v.pty.PID(), "git": git})
 }

@@ -14,18 +14,24 @@
 
 ## Límites de recursos
 
-Una vista web para todos los paneles. Ocho sesiones como máximo en UI y backend.
+Una vista web para todos los paneles. Ocho shells simultáneos como máximo en UI y backend. Tres paneles visibles.
+Las pestañas restauradas no crean shell ni xterm hasta mostrarse.
 Frames de 16 KiB; ventana de 64 KiB y hasta un frame adicional en tránsito, más
 cuatro frames de cola. Scrollback finito, sin persistencia automática de salida.
 Comandos de PATH indexados una vez; completado con debounce y máximo 30 resultados.
 Lectura del explorador limitada a 1.001 entradas y 200 elementos presentados.
-Consultas Git con contexto de 1,2 s y salida limitada a 64 KiB.
+Resumen Git con contexto de 1,2 s. Detalle bajo demanda con contexto de 4 s
+y salida limitada a 256 KiB por comando, con indicador de truncado. No ejecuta
+diffs externos, textconv, fetch ni cambios de rama. Usa pathspec literal y
+validación contra el estado actual para el archivo seleccionado.
 
 ## Persistencia
 
 `settings.json` se escribe por archivo temporal y rename bajo mutex, con
 permisos privados donde el sistema los soporte. Se serializa únicamente estado
-de configuración: árbol, tamaños, perfiles, cwd, favoritos y preferencias.
+de configuración v2: pestañas, árbol visible, tamaños, perfiles, cwd, favoritos y
+preferencias. Migra árboles v1 a pestañas. En cada inicio agrega una sesión
+nueva con el cwd capturado por el backend y reinicia la vista en un panel.
 Los IDs efímeros del servidor no se restauran. Abrir un workspace nuevo crea
 procesos nuevos; nunca reproduce los comandos guardados.
 

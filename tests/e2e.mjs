@@ -19,20 +19,53 @@ await writeFile(
   'console.log("Forge ready");\n',
 );
 execFileSync("git", ["init", "-q", "-b", "main", project]);
+const git = (...args) => execFileSync("git", ["-C", project, ...args]);
+git("config", "user.name", "Fixture");
+git("config", "user.email", "fixture@example.invalid");
+git("add", ".");
+git("commit", "-qm", "fixture");
+git("branch", "feature/tabs");
+git("update-ref", "refs/remotes/origin/preview", "HEAD");
+await writeFile(
+  path.join(project, "README.md"),
+  "# Forge demo\nStaged change.\n",
+);
+git("add", "README.md");
+await writeFile(
+  path.join(project, "README.md"),
+  "# Forge demo\nStaged change.\nWorktree change.\n",
+);
+await writeFile(
+  path.join(project, "untracked.txt"),
+  "<script>window.INJECTED=true</script>\n",
+);
+const savedIds = Array.from({ length: 8 }, (_, i) => "saved-" + i);
+let legacyTree = { type: "leaf", id: savedIds[0] };
+for (const id of savedIds.slice(1))
+  legacyTree = {
+    type: "split",
+    axis: "row",
+    ratio: 0.5,
+    a: legacyTree,
+    b: { type: "leaf", id },
+  };
 await writeFile(
   path.join(tmp, "settings.json"),
   JSON.stringify({
     settings: { theme: "obsidian" },
-    workspaces: [
-      { id: "demo", name: "Development", tree: { type: "leaf", id: "one" } },
-    ],
-    panes: [{ id: "one", profile: "bash", cwd: project, label: "workspace" }],
+    workspaces: [{ id: "demo", name: "Development", tree: legacyTree }],
+    panes: savedIds.map((id) => ({
+      id,
+      profile: "bash",
+      cwd: path.join(project, "my project"),
+      label: id,
+    })),
   }),
 );
 const child = spawn(
   process.env.FORGE_BIN || path.resolve("build/forge-headless"),
   ["--serve", "--config-dir", tmp],
-  { stdio: ["ignore", "pipe", "pipe"] },
+  { cwd: project, stdio: ["ignore", "pipe", "pipe"] },
 );
 let stderr = "";
 child.stderr.on("data", (d) => (stderr += d));
@@ -82,6 +115,28 @@ async function waitForTerminal(text) {
 try {
   await page.goto(url);
   await page.waitForSelector(".terminal-pane.connected");
+  await check(
+    "Fresh launch uses process cwd and preserves all eight saved tabs without starting them",
+    async () => {
+      assert.equal(await page.locator(".pane-tab").count(), 9);
+      assert.equal(await page.locator(".pane-tab.dormant").count(), 8);
+      assert.equal(await page.locator(".terminal-pane").count(), 1);
+      assert.equal(
+        await page.locator("#view-1").getAttribute("aria-pressed"),
+        "true",
+      );
+      assert.equal(await page.locator("#status-cwd").innerText(), project);
+      assert.equal(
+        await page.evaluate(
+          async () =>
+            (await fetch("/api/metrics").then((r) => r.json())).sessions,
+        ),
+        1,
+      );
+      await command("pwd");
+      await waitForTerminal(project);
+    },
+  );
   await check("Real shell, Unicode and executable output", async () => {
     await command(
       `printf '\\033[2J\\033[H'; printf 'FORGE · terminal real\\n'; printf 'UNICODE_%s\\n' 'ñ✓世界'; node src/index.js`,
@@ -111,21 +166,113 @@ try {
     );
     await page.locator("#command-input").fill("");
   });
-  await check("Nested split layouts and independent PTYs", async () => {
-    await page.locator("#split-row").click();
-    await page.waitForFunction(
-      () => document.querySelectorAll(".terminal-pane.connected").length === 2,
-    );
-    await command("printf 'SECOND_%s\\n' SESSION");
-    await waitForTerminal("SECOND_SESSION");
-    await page.locator("#split-col").click();
-    await page.waitForFunction(
-      () => document.querySelectorAll(".terminal-pane.connected").length === 3,
-    );
-    await command("printf 'THIRD_%s\\n' SESSION");
-    await waitForTerminal("THIRD_SESSION");
-    assert.equal(await page.locator(".split-col").count(), 1);
-  });
+  await check(
+    "Git viewer shows staged, unstaged, untracked changes and branches without changing HEAD",
+    async () => {
+      await page.waitForFunction(
+        () => !document.querySelector("#git-context").disabled,
+      );
+      await page.locator("#git-context").click();
+      await page.waitForSelector(".git-file");
+      assert.match(
+        await page.locator("#git-branches").innerText(),
+        /feature\/tabs/,
+      );
+      assert.match(
+        await page.locator("#git-branches").innerText(),
+        /origin\/preview/,
+      );
+      await page.locator('.git-file[data-path="README.md"]').click();
+      await page.waitForFunction(() =>
+        document
+          .querySelector("#git-diff")
+          .textContent.includes("+Worktree change."),
+      );
+      assert.match(
+        await page.locator("#git-diff").innerText(),
+        /\+Staged change/,
+      );
+      await page.screenshot({ path: "reports/forge-git.png" });
+      await page.locator('.git-file[data-path="untracked.txt"]').click();
+      await page.waitForFunction(() =>
+        document.querySelector("#git-diff").textContent.includes("<script>"),
+      );
+      assert.equal(await page.evaluate(() => window.INJECTED), undefined);
+      assert.equal(git("branch", "--show-current").toString().trim(), "main");
+      await page.locator(".modal-close").click();
+    },
+  );
+  await check(
+    "New tabs keep only one panel visible and background PTYs keep output and state",
+    async () => {
+      const first = await page
+        .locator(".pane-tab.active")
+        .getAttribute("data-pane");
+      await command(
+        "export FORGE_TAB_TEST=preserved; (sleep 0.4; printf 'BACKGROUND_%s\\n' ALIVE) &",
+      );
+      await page.locator("#profile-new").click();
+      await page.locator("#new-profile").selectOption("bash");
+      await page.locator("#profile-form button.primary").click();
+      await page.waitForFunction(
+        () => document.querySelectorAll(".pane-tab").length === 10,
+      );
+      await page.waitForSelector(".terminal-pane.active.connected");
+      const second = await page
+        .locator(".pane-tab.active")
+        .getAttribute("data-pane");
+      assert.notEqual(first, second);
+      assert.equal(await page.locator(".terminal-pane").count(), 1);
+      assert.equal(await page.locator(".pane-tab").count(), 10);
+      assert.equal(
+        await page.evaluate(
+          async () =>
+            (await fetch("/api/metrics").then((r) => r.json())).sessions,
+        ),
+        2,
+      );
+      await page.locator(`.pane-tab[data-pane="${first}"]`).click();
+      await waitForTerminal("BACKGROUND_ALIVE");
+      await command("printf 'STATE_%s\\n' \"$FORGE_TAB_TEST\"");
+      await waitForTerminal("STATE_preserved");
+      await page.locator(`.pane-tab[data-pane="${second}"]`).click();
+    },
+  );
+  await check(
+    "Explicit 1/2/3 views reuse tabs, preserve independent shells, and cap the layout at three",
+    async () => {
+      const tabs = await page.locator(".pane-tab").count();
+      await page.locator("#view-2").click();
+      await page.waitForFunction(
+        () =>
+          document.querySelectorAll(".terminal-pane.connected").length === 2,
+      );
+      await page.locator(".terminal-pane").last().click();
+      await command("PS1='forge> '; printf 'SECOND_%s\\n' SESSION");
+      await waitForTerminal("SECOND_SESSION");
+      await page.locator("#view-3").click();
+      await page.waitForFunction(
+        () =>
+          document.querySelectorAll(".terminal-pane.connected").length === 3,
+      );
+      await page.locator(".terminal-pane").last().click();
+      await command("PS1='forge> '; printf 'THIRD_%s\\n' SESSION");
+      await waitForTerminal("THIRD_SESSION");
+      await page.locator("#view-3").click();
+      assert.equal(await page.locator(".terminal-pane").count(), 3);
+      assert.equal(await page.locator(".pane-tab").count(), tabs);
+      await page.locator("#split-col").click();
+      assert.equal(await page.locator(".split-col").count(), 2);
+      await page.locator("#view-1").click();
+      assert.equal(await page.locator(".terminal-pane").count(), 1);
+      await waitForTerminal("THIRD_SESSION");
+      await page.locator("#view-3").click();
+      await page.locator("#split-row").click();
+      await page.locator(".terminal-pane").last().click();
+      await command("PS1='forge> '; printf 'THIRD_%s\\n' SESSION");
+      await waitForTerminal("THIRD_SESSION");
+    },
+  );
   await check("Drag resizing reaches PTY dimensions", async () => {
     const separator = page.locator(".split-row > .split-resizer").first();
     const before = await page.locator("#status-size").innerText();
@@ -214,25 +361,39 @@ try {
     assert.match(text, /THIRD_SESSION/);
     await page.locator(".export-done").click();
   });
-  await check("Layout and preferences survive reload", async () => {
-    await page.locator("#save-workspace").click();
-    await page.waitForFunction(() =>
-      document
-        .querySelector("#toast")
-        ?.textContent.includes("Espacio guardado"),
-    );
-    await page.reload();
-    await page.waitForFunction(
-      () => document.querySelectorAll(".terminal-pane.connected").length === 3,
-    );
-    assert.equal(await page.locator(".split-col").count(), 1);
-    assert.equal(await page.locator("#main-title").innerText(), "Development");
-    const config = JSON.parse(
-      await readFile(path.join(tmp, "settings.json"), "utf8"),
-    );
-    assert.equal(config.settings.fontSize, 13);
-    assert.equal(config.panes.length, 3);
-  });
+  await check(
+    "Reload restores tabs and preferences in background plus one fresh launch shell",
+    async () => {
+      const before = await page.locator(".pane-tab").count();
+      await page.locator("#save-workspace").click();
+      await page.waitForFunction(() =>
+        document
+          .querySelector("#toast")
+          ?.textContent.includes("Espacio guardado"),
+      );
+      const config = JSON.parse(
+        await readFile(path.join(tmp, "settings.json"), "utf8"),
+      );
+      assert.equal(config.version, 2);
+      assert.equal(config.settings.fontSize, 13);
+      assert.equal(config.panes.length, before);
+      assert.equal(config.workspaces[0].tabs.length, before);
+      await page.reload();
+      await page.waitForSelector(".terminal-pane.connected");
+      assert.equal(await page.locator(".terminal-pane").count(), 1);
+      assert.equal(await page.locator(".pane-tab").count(), before + 1);
+      assert.equal(await page.locator(".pane-tab.dormant").count(), before);
+      assert.equal(await page.locator("#status-cwd").innerText(), project);
+      assert.equal(
+        await page.locator("#main-title").innerText(),
+        "Development",
+      );
+      await page.waitForFunction(
+        async () =>
+          (await fetch("/api/metrics").then((r) => r.json())).sessions === 1,
+      );
+    },
+  );
   await check("Process exit and restart", async () => {
     await command("exit");
     await page.waitForFunction(() =>
@@ -244,17 +405,57 @@ try {
     await page.locator(".confirm").click();
     await page.waitForSelector(".terminal-pane.active.connected");
   });
-  await check("Closing one pane removes its session", async () => {
-    await page.locator(".terminal-pane.active .close-pane").click();
-    await page.locator(".confirm").click();
-    await page.waitForFunction(
-      () => document.querySelectorAll(".terminal-pane.connected").length === 2,
-    );
-    await page.waitForFunction(async () => {
-      const m = await fetch("/api/metrics").then((r) => r.json());
-      return m.sessions === 2;
-    });
-  });
+  await check(
+    "Closing a background tab releases its PTY without switching the active tab",
+    async () => {
+      const active = await page
+        .locator(".pane-tab.active")
+        .getAttribute("data-pane");
+      await page.locator(".pane-tab").first().click();
+      await page.waitForSelector(".terminal-pane.active.connected");
+      const background = await page
+        .locator(".pane-tab.active")
+        .getAttribute("data-pane");
+      await page.locator(`.pane-tab[data-pane="${active}"]`).click();
+      await page
+        .locator(
+          `.tab-wrap:has(.pane-tab[data-pane="${background}"]) .tab-close`,
+        )
+        .click();
+      await page.locator(".confirm").click();
+      await page.waitForFunction(
+        async () =>
+          (await fetch("/api/metrics").then((r) => r.json())).sessions === 1,
+      );
+      assert.equal(
+        await page.locator(".pane-tab.active").getAttribute("data-pane"),
+        active,
+      );
+      assert.equal(await page.locator(".terminal-pane").count(), 1);
+    },
+  );
+  await check(
+    "Saved cwd is preserved and switching workspaces starts only one tab",
+    async () => {
+      const launch = await page
+        .locator(".pane-tab.active")
+        .getAttribute("data-pane");
+      await page.locator(".pane-tab").first().click();
+      await page.waitForSelector(".terminal-pane.active.connected");
+      assert.equal(
+        await page.locator("#status-cwd").innerText(),
+        path.join(project, "my project"),
+      );
+      await page.locator("#new-workspace").click();
+      await page.locator("#new-space-name").fill("Secondary");
+      await page.locator("#profile-form button.primary").click();
+      await page.waitForSelector(".terminal-pane.active.connected");
+      assert.equal(await page.locator(".terminal-pane").count(), 1);
+      await page.locator(".workspace-item").first().click();
+      await page.locator(`.pane-tab[data-pane="${launch}"]`).click();
+      assert.equal(await page.locator(".terminal-pane").count(), 1);
+    },
+  );
   await check("No frontend exceptions or horizontal overflow", async () => {
     assert.deepEqual(errors, []);
     assert.equal(
@@ -265,12 +466,15 @@ try {
     );
   });
   // Actual commands populate the final screenshot; no simulated terminal output.
-  await page.locator(".pane-tab").first().click();
   await command(
     `clear; printf '\\033[38;2;251;152;100mFORGE TERMINAL\\033[0m\\n'; printf 'Tu espacio de comando.\\n\\n'; git status --short; printf '\\n'; node src/index.js; printf '\\n'; ls -F`,
   );
   await waitForTerminal("Forge ready");
-  await page.locator(".pane-tab").last().click();
+  await page.locator("#view-2").click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".terminal-pane.connected").length === 2,
+  );
+  await page.locator(".terminal-pane").last().click();
   await command(
     `clear; printf '\\033[38;2;145;189;165mSISTEMA LOCAL\\033[0m\\n\\n'; uname -srm; printf '\\n'; printf 'Shell: %s\\n' "$BASH_VERSION"; printf '\\n'; printf 'PTY: '; tty; printf '\\n'; printf 'UTF-8  ñ  ✓  世界\\n'`,
   );
@@ -284,6 +488,11 @@ try {
   );
   console.log("All end-to-end checks passed:", results.length);
 } catch (error) {
+  await page.locator(".terminal-pane.active .export-pane").click();
+  await page.waitForSelector(".export-done");
+  const outputFile = await page.locator("#modal input").inputValue();
+  await writeFile("reports/e2e-buffer.txt", await readFile(outputFile, "utf8"));
+  await page.locator(".export-done").click();
   await page.screenshot({ path: "reports/e2e-failure.png" });
   await writeFile(
     "reports/e2e-error.txt",

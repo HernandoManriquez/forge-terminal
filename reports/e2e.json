@@ -1,6 +1,10 @@
 {
-  "passed": 13,
+  "passed": 17,
   "results": [
+    {
+      "name": "Fresh launch uses process cwd and preserves all eight saved tabs without starting them",
+      "status": "PASS"
+    },
     {
       "name": "Real shell, Unicode and executable output",
       "status": "PASS"
@@ -10,7 +14,15 @@
       "status": "PASS"
     },
     {
-      "name": "Nested split layouts and independent PTYs",
+      "name": "Git viewer shows staged, unstaged, untracked changes and branches without changing HEAD",
+      "status": "PASS"
+    },
+    {
+      "name": "New tabs keep only one panel visible and background PTYs keep output and state",
+      "status": "PASS"
+    },
+    {
+      "name": "Explicit 1/2/3 views reuse tabs, preserve independent shells, and cap the layout at three",
       "status": "PASS"
     },
     {
@@ -38,7 +50,7 @@
       "status": "PASS"
     },
     {
-      "name": "Layout and preferences survive reload",
+      "name": "Reload restores tabs and preferences in background plus one fresh launch shell",
       "status": "PASS"
     },
     {
@@ -46,7 +58,11 @@
       "status": "PASS"
     },
     {
-      "name": "Closing one pane removes its session",
+      "name": "Closing a background tab releases its PTY without switching the active tab",
+      "status": "PASS"
+    },
+    {
+      "name": "Saved cwd is preserved and switching workspaces starts only one tab",
       "status": "PASS"
     },
     {

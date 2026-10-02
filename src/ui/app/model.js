@@ -1,4 +1,5 @@
 export const MAX_PANES = 8;
+export const MAX_VISIBLE = 3;
 export const leaf = (id) => ({ type: "leaf", id });
 export function leaves(tree) {
   return !tree
@@ -19,10 +20,61 @@ export function splitLeaf(tree, id, newId, axis) {
   };
 }
 export function removeLeaf(tree, id) {
+  if (!tree) return null;
   if (tree.type === "leaf") return tree.id === id ? null : tree;
   const a = removeLeaf(tree.a, id),
     b = removeLeaf(tree.b, id);
   return !a ? b : !b ? a : { ...tree, a, b };
+}
+export function replaceLeaf(tree, id, replacement) {
+  if (!tree) return leaf(replacement);
+  if (tree.type === "leaf") return tree.id === id ? leaf(replacement) : tree;
+  return {
+    ...tree,
+    a: replaceLeaf(tree.a, id, replacement),
+    b: replaceLeaf(tree.b, id, replacement),
+  };
+}
+export function viewTree(ids, axis = "row") {
+  const visible = [...new Set(ids)].slice(0, MAX_VISIBLE);
+  if (!visible.length) return null;
+  if (visible.length === 1) return leaf(visible[0]);
+  return {
+    type: "split",
+    axis: axis === "col" ? "col" : "row",
+    ratio: 1 / visible.length,
+    a: leaf(visible[0]),
+    b: viewTree(visible.slice(1), axis),
+  };
+}
+export function restoreWorkspaces(saved, valid) {
+  const seen = new Set(),
+    spaces = new Set();
+  return saved
+    .filter((w) => w && typeof w.id === "string")
+    .flatMap((w) => {
+      if (spaces.has(w.id)) return [];
+      spaces.add(w.id);
+      const source = Array.isArray(w.tabs)
+        ? w.tabs
+        : leaves(sanitizeTree(w.tree, valid));
+      const tabs = source.filter((id) => {
+        if (!valid.has(id) || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+      if (!tabs.length) return [];
+      const active = tabs.includes(w.activePane) ? w.activePane : tabs[0];
+      return [
+        {
+          id: w.id,
+          name: String(w.name || "Espacio").slice(0, 40),
+          tabs,
+          activePane: active,
+          tree: leaf(active),
+        },
+      ];
+    });
 }
 export function sanitizeTree(tree, valid, seen = new Set(), depth = 0) {
   if (!tree || depth > 12) return null;
