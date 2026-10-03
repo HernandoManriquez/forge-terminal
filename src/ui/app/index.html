@@ -14,7 +14,7 @@
         <div class="brand">
           <img src="/icon.svg" alt="" width="31" height="31" /><strong
             >forge<span>terminal</span></strong
-          ><span class="version">MVP 0.2</span>
+          ><span class="version">MVP 0.3</span>
         </div>
         <div class="top-path">
           <i data-lucide="monitor" class="icon"></i><span>Local</span
@@ -99,6 +99,15 @@
           <div class="section-heading file-heading">
             <span>EXPLORADOR</span>
             <div>
+              <button
+                id="files-hidden"
+                class="hidden-files-button"
+                title="Mostrar archivos ocultos"
+                aria-label="Mostrar archivos ocultos"
+                aria-pressed="false"
+              >
+                Ocultos
+              </button>
               <button
                 id="files-up"
                 class="icon-button small"
@@ -253,7 +262,9 @@
           <div id="terminal-grid" class="terminal-grid"></div>
           <div id="command-area" class="command-area">
             <div class="command-label">
-              <span><i data-lucide="sparkles" class="icon"></i>COMPOSITOR</span
+              <span
+                ><i data-lucide="sparkles" class="icon"></i>BARRA DE
+                COMANDOS</span
               ><span
                 >Autocompletar <kbd>Tab</kbd
                 ><span class="dot-separator">·</span> Enfocar
@@ -267,7 +278,7 @@
                 autocomplete="off"
                 autocapitalize="off"
                 spellcheck="false"
-                aria-label="Compositor de comandos"
+                aria-label="Barra de comandos"
                 placeholder="Escribe un comando, descubre el siguiente…"
               /><button
                 id="insert-command"

@@ -58,6 +58,26 @@
       "platforms": [
         "linux"
       ]
+    },
+    {
+      "name": "Editor files and independent window",
+      "command": [
+        "node",
+        "tests/editor-e2e.mjs"
+      ],
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "name": "Complete terminal rows and scroll following",
+      "command": [
+        "node",
+        "tests/scroll-e2e.mjs"
+      ],
+      "platforms": [
+        "linux"
+      ]
     }
   ]
 }

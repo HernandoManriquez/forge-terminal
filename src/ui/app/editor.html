@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Forge · Editor</title>
+    <link rel="icon" href="/icon.svg" />
+    <link rel="stylesheet" href="/editor.css" />
+  </head>
+  <body>
+    <header>
+      <img src="/icon.svg" width="27" height="27" alt="" /><strong
+        >forge <small>editor</small></strong
+      ><span id="editor-title">Sin archivo</span
+      ><span id="editor-dirty" hidden>Sin guardar</span>
+    </header>
+    <nav aria-label="Acciones del editor">
+      <button id="editor-new">Nuevo</button
+      ><button id="editor-open">Abrir…</button><span class="separator"></span
+      ><button id="editor-save" class="primary" title="Guardar · Ctrl+S">
+        Guardar</button
+      ><button id="editor-save-as">Guardar como…</button
+      ><button id="editor-reload">Recargar</button><span class="spacer"></span
+      ><label
+        ><input id="editor-wrap" type="checkbox" checked />Ajustar líneas</label
+      ><button id="editor-close">Cerrar</button>
+    </nav>
+    <div class="layout">
+      <aside aria-label="Explorador del editor">
+        <div class="sidebar-head">
+          <strong>ARCHIVOS</strong><span class="spacer"></span
+          ><button
+            id="editor-up"
+            aria-label="Carpeta superior"
+            title="Carpeta superior"
+          >
+            ↑</button
+          ><button
+            id="editor-refresh"
+            aria-label="Actualizar archivos"
+            title="Actualizar archivos"
+          >
+            ↻
+          </button>
+        </div>
+        <form id="editor-folder-form">
+          <input
+            id="editor-folder"
+            aria-label="Carpeta del explorador"
+          /><button aria-label="Ir a la carpeta">→</button>
+        </form>
+        <label class="hidden-toggle"
+          ><input id="editor-hidden" type="checkbox" />Mostrar ocultos</label
+        >
+        <div id="editor-files"></div>
+      </aside>
+      <main>
+        <div id="editor-error" role="status" hidden></div>
+        <textarea
+          id="editor-text"
+          aria-label="Contenido del archivo"
+          spellcheck="false"
+          autocapitalize="off"
+          autocomplete="off"
+          wrap="soft"
+          disabled
+          placeholder="Abre un archivo o pulsa Nuevo"
+        ></textarea>
+      </main>
+    </div>
+    <footer>
+      <span id="editor-state" role="status">Preparado</span
+      ><span class="spacer"></span
+      ><span id="editor-format">Texto plano · UTF-8</span
+      ><span id="editor-cursor">Línea 1, columna 1</span>
+    </footer>
+    <dialog id="editor-dialog" aria-labelledby="editor-dialog-title">
+      <form id="editor-dialog-form">
+        <h2 id="editor-dialog-title"></h2>
+        <p id="editor-dialog-description"></p>
+        <label id="editor-dialog-field" hidden
+          >Ruta absoluta<input id="editor-dialog-input" autocomplete="off"
+        /></label>
+        <p id="editor-dialog-error" role="alert"></p>
+        <div id="editor-dialog-buttons"></div>
+      </form>
+    </dialog>
+    <script type="module" src="/editor.js"></script>
+  </body>
+</html>

@@ -83,6 +83,7 @@ const url = await new Promise((resolve, reject) => {
 });
 const browser = await chromium.launch({
   headless: true,
+  executablePath: process.env.FORGE_CHROME,
   args: ["--no-sandbox"],
 });
 const context = await browser.newContext({

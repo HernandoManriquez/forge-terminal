@@ -27,6 +27,9 @@ type Server struct {
 	assets                          fs.FS
 	configDir, version, token, host string
 	startupCwd                      string
+	editorFile                      string
+	editorLauncher                  func(string) error
+	editorMu                        sync.Mutex
 	listener                        net.Listener
 	http                            *http.Server
 	mu                              sync.Mutex
@@ -73,6 +76,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("GET /api/bootstrap", s.bootstrap)
 	mux.HandleFunc("POST /api/config", s.saveConfig)
 	mux.HandleFunc("GET /api/files", s.files)
+	mux.HandleFunc("POST /api/editor/open", s.editorOpen)
+	mux.HandleFunc("GET /api/editor/file", s.editorRead)
+	mux.HandleFunc("POST /api/editor/save", s.editorSave)
 	mux.HandleFunc("GET /api/context", s.context)
 	mux.HandleFunc("GET /api/git", s.gitDetails)
 	mux.HandleFunc("GET /api/git/diff", s.gitDiff)
@@ -123,11 +129,11 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			return
 		}
 		if r.URL.Path == "/" && r.Method == http.MethodGet && secureEqual(r.URL.Query().Get("token"), s.token) {
-			http.SetCookie(w, &http.Cookie{Name: "forge_auth", Value: s.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: s.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			http.Redirect(w, r, s.landingPage(), http.StatusSeeOther)
 			return
 		}
-		cookie, err := r.Cookie("forge_auth")
+		cookie, err := r.Cookie(s.cookieName())
 		if err != nil || !secureEqual(cookie.Value, s.token) {
 			http.Error(w, "Open Forge from its executable to authorize this window.", http.StatusUnauthorized)
 			return
@@ -138,6 +144,10 @@ func (s *Server) guard(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+func (s *Server) cookieName() string {
+	_, port, _ := net.SplitHostPort(s.host)
+	return "forge_auth_" + port
 }
 func secureEqual(a, b string) bool {
 	return a != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
@@ -161,7 +171,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 	if err == nil && json.Valid(b) {
 		config = b
 	}
-	writeJSON(w, map[string]any{"version": s.version, "platform": runtime.GOOS, "home": home, "startupCwd": s.startupCwd, "profiles": s.profiles, "config": config, "maxSessions": MaxSessions, "configPath": filepath.Join(s.configDir, "settings.json")})
+	writeJSON(w, map[string]any{"version": s.version, "nativeEditor": s.editorLauncher != nil, "editorFile": s.editorFile, "platform": runtime.GOOS, "home": home, "startupCwd": s.startupCwd, "profiles": s.profiles, "config": config, "maxSessions": MaxSessions, "configPath": filepath.Join(s.configDir, "settings.json")})
 }
 
 func (s *Server) saveConfig(w http.ResponseWriter, r *http.Request) {

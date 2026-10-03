@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-02T04:00:30.129764+00:00",
+  "timestamp": "2026-10-02T22:18:29.761341+00:00",
   "status": "PASS",
   "results": [
     {
@@ -29,6 +29,16 @@
     },
     {
       "name": "End-to-end UI and real PTY",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "Editor files and independent window",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "Complete terminal rows and scroll following",
       "status": "PASS",
       "exit_code": 0
     }

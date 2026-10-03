@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "platform": "Linux x64 / WebKitGTK 4.1",
+  "environment": "Xvfb; software rendering; root test sandbox exception if required",
+  "windows_runtime_tested": false,
+  "checks": [
+    "WM_DELETE_WINDOW preserves unsaved document and opens prompt",
+    "Cancel keeps editor open; Ctrl+S writes exact document bytes",
+    "Clean native window close exits successfully"
+  ]
+}

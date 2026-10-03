@@ -1,0 +1,54 @@
+{
+  "status": "PASS",
+  "passed": 12,
+  "results": [
+    {
+      "name": "Click selects; path insertion is explicit",
+      "status": "PASS"
+    },
+    {
+      "name": "Explorer toggle shows dotfiles and folders",
+      "status": "PASS"
+    },
+    {
+      "name": "Edit opens an independent window and inherits preferences",
+      "status": "PASS"
+    },
+    {
+      "name": "Save preserves actual UTF-8 BOM and CRLF bytes",
+      "status": "PASS"
+    },
+    {
+      "name": "Navigation supports cancel and save before opening",
+      "status": "PASS"
+    },
+    {
+      "name": "Discard leaves the original unchanged",
+      "status": "PASS"
+    },
+    {
+      "name": "External conflicts preserve edits; Save As recovers them",
+      "status": "PASS"
+    },
+    {
+      "name": "Save As refuses existing files",
+      "status": "PASS"
+    },
+    {
+      "name": "Folders, dotfiles and typed folder paths are navigable",
+      "status": "PASS"
+    },
+    {
+      "name": "Binary rejection preserves current document",
+      "status": "PASS"
+    },
+    {
+      "name": "Native close entry point can cancel; Close then saves",
+      "status": "PASS"
+    },
+    {
+      "name": "New document warns before reload/close and can be discarded",
+      "status": "PASS"
+    }
+  ]
+}

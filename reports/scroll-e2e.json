@@ -1,0 +1,22 @@
+{
+  "status": "PASS",
+  "passed": 4,
+  "results": [
+    {
+      "name": "Burst output and long prompt show complete final row",
+      "status": "PASS"
+    },
+    {
+      "name": "Complete rows across fonts, window sizes and fractional screen scale",
+      "status": "PASS"
+    },
+    {
+      "name": "Two and three panes fit full rows in both orientations",
+      "status": "PASS"
+    },
+    {
+      "name": "Output follows bottom; history pauses and survives resize; following resumes",
+      "status": "PASS"
+    }
+  ]
+}

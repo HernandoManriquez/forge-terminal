@@ -1,4 +1,4 @@
-# Forge Terminal 0.2 — alcance
+# Forge Terminal 0.3 — alcance
 
 Aplicación de escritorio ejecutable para Windows x64 y Linux x64.
 
@@ -10,7 +10,7 @@ Aplicación de escritorio ejecutable para Windows x64 y Linux x64.
 3. Pestañas independientes de la vista: 1 panel por defecto, botones 1/2/3,
    filas o columnas y separadores ajustables. Hasta ocho shells en ejecución.
    Las sesiones iniciadas siguen funcionando en segundo plano.
-4. Compositor con completado de comandos en PATH, rutas, argumentos conocidos,
+4. Barra de comandos con completado de comandos en PATH, rutas, argumentos conocidos,
    favoritos y, opcionalmente, historial. Elegir una sugerencia no la ejecuta.
 5. Explorador, favoritos, memoria del backend y visor Git al pulsar la rama:
    cambios preparados/sin preparar/nuevos, diferencias por archivo y ramas
@@ -23,6 +23,17 @@ Aplicación de escritorio ejecutable para Windows x64 y Linux x64.
    nunca reejecuta comandos ni afirma recuperar procesos anteriores.
 9. Confirmación de pegado con saltos de línea y de cierre/reinicio de panel.
 10. Interfaz y recursos incorporados al ejecutable; sin CDN, nube ni telemetría propia.
+
+11. Explorador con selección sin inserción automática, menú contextual accesible
+    y botón persistente para mostrar archivos/carpetas ocultos.
+12. Editor simple en ventana independiente: navegación, nuevo, abrir, guardar,
+    guardar como, recargar y cerrar. Texto UTF-8 <=2 MiB; BOM y LF/CRLF conservados.
+13. Cambios sin guardar protegidos en navegación y cierre, incluido cierre nativo.
+    Revisión optimista de contenido ante cambios externos; Guardar como no pisa
+    archivos existentes. Sin IDE, resaltado ni ejecución desde el editor.
+14. Última fila completa; seguimiento del final mientras se recibe salida,
+    pausa al subir al historial, conservación de línea al cambiar altura y
+    reanudación al volver al final. Verificar fuentes y DPR fraccional.
 
 ## Límites
 

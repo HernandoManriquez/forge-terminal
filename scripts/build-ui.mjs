@@ -13,3 +13,15 @@ await build({
 await cp("src/ui/app/index.html", "src/ui/dist/index.html");
 await cp("src/ui/app/icon.svg", "src/ui/dist/icon.svg");
 console.log("UI built. All assets are local.");
+
+await build({
+  entryPoints: ["src/ui/app/editor.js"],
+  bundle: true,
+  minify: true,
+  format: "esm",
+  target: ["es2020"],
+  outfile: "src/ui/dist/editor.js",
+  legalComments: "eof",
+});
+await cp("src/ui/app/editor.html", "src/ui/dist/editor.html");
+await cp("src/ui/app/editor.css", "src/ui/dist/editor.css");

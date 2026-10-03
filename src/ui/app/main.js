@@ -405,6 +405,7 @@ function applySettings() {
   $("#app").classList.toggle("hide-right", focused || !settings.rightVisible);
   $("#app").classList.toggle("focus-mode", focused);
   $("#file-section").hidden = !settings.showFiles;
+  $("#files-hidden").setAttribute("aria-pressed", String(settings.showHidden));
   $(".file-heading").hidden = !settings.showFiles;
   $("#metrics-section").hidden = !settings.showMetrics;
   $("#snippets-section").hidden = !settings.showSnippets;
@@ -418,6 +419,7 @@ function applySettings() {
   );
   for (const p of panes.values())
     if (p.term) {
+      if (p.term.options.fontSize !== settings.fontSize) p.fitting = true;
       p.term.options.theme = themes[settings.theme];
       p.term.options.fontSize = settings.fontSize;
       p.term.options.scrollback = settings.scrollback;
@@ -441,15 +443,70 @@ function send(p, message) {
   }
   p.ws.send(JSON.stringify(message));
 }
-function fitVisible() {
-  for (const id of leaves(workspace()?.tree)) {
-    const p = panes.get(id);
-    if (p?.fit && p.host.clientWidth > 20 && p.host.clientHeight > 20) {
-      try {
-        p.fit.fit();
-      } catch {}
+function rememberScrollPosition(p, fromInput = false) {
+  // Geometry changes can clamp scrollTop before ResizeObserver updates xterm.
+  if (
+    p.fitting ||
+    (p.host.isConnected &&
+      (p.host.clientWidth !== p.fittedWidth ||
+        p.host.clientHeight !== p.fittedHeight))
+  )
+    return;
+  // Output can grow the scroll area one frame before the viewport follows it.
+  // Only a user action may switch a following terminal into history mode.
+  if (p.followOutput && !fromInput) return;
+  const v = p.host.querySelector(".xterm-viewport");
+  if (p.host.isConnected) {
+    if (fromInput)
+      p.followOutput = v.scrollHeight - v.clientHeight - v.scrollTop <= 1;
+    if (p.followOutput) p.historyTop = undefined;
+    else {
+      // A viewport refresh can consume the next native scroll event. Read the
+      // actual position and synchronize xterm before output or a fit can race it.
+      const rowHeight =
+        p.host.querySelector(".xterm-screen").getBoundingClientRect().height /
+        p.term.rows;
+      p.historyTop = Math.round(v.scrollTop / rowHeight);
+      p.term.scrollToLine(p.historyTop);
     }
   }
+}
+function fitPane(p) {
+  if (
+    !p?.fit ||
+    !p.host.isConnected ||
+    p.host.clientWidth <= 20 ||
+    p.host.clientHeight <= 20
+  )
+    return;
+  cancelAnimationFrame(p.settleFitFrame);
+  p.fitting = true;
+  const oldColumns = p.term.cols,
+    oldTop = p.historyTop ?? p.term.buffer.active.viewportY;
+  try {
+    p.fit.fit();
+    const historyTop =
+      !p.followOutput && oldColumns === p.term.cols ? oldTop : undefined;
+    p.fittedWidth = p.host.clientWidth;
+    p.fittedHeight = p.host.clientHeight;
+    if (p.followOutput) p.term.scrollToBottom();
+    else if (historyTop !== undefined) p.term.scrollToLine(historyTop);
+    p.settleFitFrame = requestAnimationFrame(() => {
+      if (p.host.isConnected) {
+        if (p.followOutput) p.term.scrollToBottom();
+        else if (historyTop !== undefined) p.term.scrollToLine(historyTop);
+      }
+      p.fitting = false;
+      p.historyTop = p.followOutput
+        ? undefined
+        : p.term.buffer.active.viewportY;
+    });
+  } catch {
+    p.fitting = false;
+  }
+}
+function fitVisible() {
+  for (const id of leaves(workspace()?.tree)) fitPane(panes.get(id));
   updateStatus();
 }
 function updateStatus() {
@@ -504,9 +561,9 @@ function createPaneDOM(p) {
   el.className = "terminal-pane";
   el.dataset.pane = p.id;
   el.id = "pane-" + p.id;
-  el.innerHTML = `<header class="pane-header"><span class="pane-dot"></span><span class="pane-label"></span><span class="pane-cwd"></span><div class="pane-actions"><button class="icon-button small restart-pane" title="Reiniciar shell" aria-label="Reiniciar shell">${icon("rotate-ccw")}</button><button class="icon-button small export-pane" title="Exportar salida" aria-label="Exportar salida">${icon("download")}</button><button class="icon-button small rename-pane" title="Renombrar panel" aria-label="Renombrar panel">${icon("more-horizontal")}</button><button class="icon-button small close-pane" title="Cerrar panel" aria-label="Cerrar panel">${icon("x")}</button></div></header><div class="terminal-host"></div><div class="pane-message" hidden></div>`;
+  el.innerHTML = `<header class="pane-header"><span class="pane-dot"></span><span class="pane-label"></span><span class="pane-cwd"></span><div class="pane-actions"><button class="icon-button small restart-pane" title="Reiniciar shell" aria-label="Reiniciar shell">${icon("rotate-ccw")}</button><button class="icon-button small export-pane" title="Exportar salida" aria-label="Exportar salida">${icon("download")}</button><button class="icon-button small rename-pane" title="Renombrar panel" aria-label="Renombrar panel">${icon("more-horizontal")}</button><button class="icon-button small close-pane" title="Cerrar panel" aria-label="Cerrar panel">${icon("x")}</button></div></header><div class="terminal-host"><div class="terminal-surface"></div></div><div class="pane-message" hidden></div>`;
   p.el = el;
-  p.host = el.querySelector(".terminal-host");
+  p.host = el.querySelector(".terminal-surface");
   el.querySelector(".pane-label").textContent = p.label || p.profile;
   el.querySelector(".pane-cwd").textContent = pathLabel(p.cwd);
   p.term = new Terminal({
@@ -530,6 +587,32 @@ function createPaneDOM(p) {
   p.term.loadAddon(p.fit);
   p.term.loadAddon(p.search);
   p.term.open(p.host);
+  p.followOutput = true;
+  const viewport = p.host.querySelector(".xterm-viewport");
+  viewport.addEventListener("scroll", () =>
+    rememberScrollPosition(p, p.draggingScrollbar),
+  );
+  p.host.addEventListener("pointerdown", (e) => {
+    p.draggingScrollbar = e.target === viewport;
+    if (p.draggingScrollbar)
+      document.addEventListener(
+        "pointerup",
+        () => {
+          p.draggingScrollbar = false;
+        },
+        { once: true },
+      );
+  });
+  for (const event of ["wheel", "touchmove"])
+    p.host.addEventListener(
+      event,
+      (e) => {
+        cancelAnimationFrame(p.settleFitFrame);
+        p.fitting = false;
+        rememberScrollPosition(p, true);
+      },
+      { passive: true },
+    );
   p.term.attachCustomKeyEventHandler((e) => !isAppShortcut(e));
   p.term.onData((data) => send(p, { type: "input", data }));
   p.term.onResize(({ cols, rows }) => {
@@ -590,12 +673,10 @@ function createPaneDOM(p) {
       },
     );
   p.observer = new ResizeObserver(() => {
-    if (leaves(workspace()?.tree).includes(p.id))
-      requestAnimationFrame(() => {
-        if (p.host.clientWidth > 20 && p.host.clientHeight > 20) {
-          p.fit.fit();
-        }
-      });
+    if (leaves(workspace()?.tree).includes(p.id)) {
+      cancelAnimationFrame(p.fitFrame);
+      p.fitFrame = requestAnimationFrame(() => fitPane(p));
+    }
   });
   p.observer.observe(p.host);
   return el;
@@ -630,6 +711,7 @@ function connect(p) {
     if (e.data instanceof ArrayBuffer) {
       const bytes = new Uint8Array(e.data);
       p.term.write(bytes, () => {
+        if (p.followOutput && p.host.isConnected) p.term.scrollToBottom();
         if (p.ws === ws && ws.readyState === WebSocket.OPEN)
           ws.send(JSON.stringify({ type: "ack", bytes: bytes.length }));
       });
@@ -1151,6 +1233,117 @@ async function refreshMetrics() {
     $("#metrics-sessions").textContent = m.sessions + " / 8";
   } catch {}
 }
+let selectedFile = "",
+  fileMenu = null;
+function selectFile(path) {
+  selectedFile = path;
+  for (const row of document.querySelectorAll(".file-entry")) {
+    row.classList.toggle("selected", row.dataset.path === path);
+    row.setAttribute("aria-pressed", String(row.dataset.path === path));
+  }
+}
+function closeFileMenu() {
+  fileMenu?.remove();
+  fileMenu = null;
+}
+async function openEditor(path) {
+  closeFileMenu();
+  let popup;
+  if (!boot.nativeEditor) {
+    popup = window.open("about:blank", "_blank", "popup,width=1050,height=760");
+    if (!popup) {
+      toast("Permite ventanas emergentes para abrir el editor");
+      return;
+    }
+    popup.opener = null;
+  }
+  try {
+    await persist();
+    const result = await api("/api/editor/open", { path });
+    if (popup) popup.location.replace(result.url);
+  } catch (e) {
+    popup?.close();
+    toast(e.message);
+  }
+}
+function showFileMenu(entry, anchor, x, y) {
+  closeFileMenu();
+  const menu = document.createElement("div");
+  fileMenu = menu;
+  menu.className = "file-context-menu";
+  menu.setAttribute("role", "menu");
+  const actions = [
+    [
+      entry.directory ? "Abrir terminal aquí" : "Editar",
+      () =>
+        entry.directory
+          ? openProfileDialog(entry.path)
+          : openEditor(entry.path),
+    ],
+    [
+      "Copiar ruta",
+      async () => {
+        try {
+          await navigator.clipboard.writeText(entry.path);
+          toast("Ruta copiada");
+        } catch {
+          inputDialog(
+            "Copiar ruta",
+            "Selecciona y copia la ruta",
+            entry.path,
+            () => {},
+          );
+        }
+      },
+    ],
+    [
+      "Insertar ruta en comandos",
+      () => putComposer(shellQuote(entry.path, current()?.profile)),
+    ],
+  ];
+  for (const [label, action] of actions) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.setAttribute("role", "menuitem");
+    b.onclick = () => {
+      closeFileMenu();
+      action();
+    };
+    menu.append(b);
+  }
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.left =
+    Math.max(8, Math.min(x || rect.left, innerWidth - menu.offsetWidth - 8)) +
+    "px";
+  menu.style.top =
+    Math.max(
+      8,
+      Math.min(y || rect.bottom, innerHeight - menu.offsetHeight - 8),
+    ) + "px";
+  menu.firstElementChild.focus();
+  menu.onkeydown = (e) => {
+    const buttons = [...menu.querySelectorAll("button")],
+      i = buttons.indexOf(document.activeElement);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeFileMenu();
+      anchor.focus();
+    }
+    if (e.key === "Tab") closeFileMenu();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      buttons[
+        (i + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length
+      ].focus();
+    }
+  };
+}
+document.addEventListener("pointerdown", (e) => {
+  if (fileMenu && !fileMenu.contains(e.target)) closeFileMenu();
+});
+window.addEventListener("resize", closeFileMenu);
+document.addEventListener("scroll", closeFileMenu, true);
 async function loadFiles(path) {
   if (!settings.showFiles) return;
   const epoch = ++fileRequest;
@@ -1171,14 +1364,27 @@ async function loadFiles(path) {
       b.className = "file-entry" + (entry.directory ? " directory" : "");
       b.innerHTML = `${icon(entry.directory ? "folder" : "file")}<span>${escapeHTML(entry.name)}</span>${entry.directory ? icon("chevron-right") : ""}`;
       b.title = entry.path;
-      b.onclick = () =>
-        entry.directory
-          ? loadFiles(entry.path)
-          : putComposer(shellQuote(entry.path, current().profile));
+      b.dataset.path = entry.path;
+      b.classList.toggle("selected", entry.path === selectedFile);
+      b.setAttribute("aria-pressed", String(entry.path === selectedFile));
+      b.onclick = () => {
+        closeFileMenu();
+        if (entry.directory) loadFiles(entry.path);
+        else selectFile(entry.path);
+      };
+      if (!entry.directory) {
+        b.ondblclick = () => openEditor(entry.path);
+        b.onkeydown = (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            openEditor(entry.path);
+          }
+        };
+      }
       b.oncontextmenu = (e) => {
         e.preventDefault();
-        if (entry.directory) openProfileDialog(entry.path);
-        else putComposer(shellQuote(entry.path, current().profile));
+        selectFile(entry.path);
+        showFileMenu(entry, b, e.clientX, e.clientY);
       };
       list.append(b);
     }
@@ -1208,7 +1414,7 @@ function renderSnippets() {
     b.className = "snippet-main";
     b.innerHTML = `<span class="snippet-top"><strong>${escapeHTML(s.name)}</strong><span>${escapeHTML(s.tag || "PERSONAL")}</span></span><code>${escapeHTML(s.command)}</code>`;
     b.onclick = () => putComposer(s.command);
-    b.title = "Insertar en compositor";
+    b.title = "Insertar en barra de comandos";
     const del = document.createElement("button");
     del.className = "snippet-delete icon-button small";
     del.innerHTML = icon("x");
@@ -1319,6 +1525,8 @@ function insertCommand(run = false) {
   performCommand(p, text, run);
 }
 function performCommand(p, text, run) {
+  p.followOutput = true;
+  p.term.scrollToBottom();
   send(p, { type: "input", data: text + (run ? "\r" : "") });
   if (run && settings.historyEnabled) {
     history = history.filter((h) => h !== text);
@@ -1468,7 +1676,7 @@ async function exportPane(p) {
 }
 function addSnippet() {
   showModal(
-    `<div class="modal-head"><h2 id="modal-title">Guardar comando favorito</h2><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><form id="snippet-form"><label class="field">Nombre<input id="snippet-name" required maxlength="80" placeholder="Ej. Revisar contenedores"></label><label class="field">Comando<textarea id="snippet-command" rows="4" required maxlength="8192">${escapeHTML($("#command-input").value)}</textarea></label><p class="modal-description">Los favoritos se insertan en el compositor para que puedas revisarlos.</p><div class="modal-footer"><button class="button primary">Guardar favorito</button></div></form>`,
+    `<div class="modal-head"><h2 id="modal-title">Guardar comando favorito</h2><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><form id="snippet-form"><label class="field">Nombre<input id="snippet-name" required maxlength="80" placeholder="Ej. Revisar contenedores"></label><label class="field">Comando<textarea id="snippet-command" rows="4" required maxlength="8192">${escapeHTML($("#command-input").value)}</textarea></label><p class="modal-description">Los favoritos se insertan en la barra de comandos para que puedas revisarlos.</p><div class="modal-footer"><button class="button primary">Guardar favorito</button></div></form>`,
   );
   $("#snippet-form").onsubmit = (e) => {
     e.preventDefault();
@@ -1510,7 +1718,7 @@ function settingsDialog() {
       ["showMetrics", "Memoria del motor"],
       ["showSnippets", "Comandos favoritos"],
       ["restore", "Restaurar pestañas en segundo plano"],
-      ["historyEnabled", "Guardar historial del compositor"],
+      ["historyEnabled", "Guardar historial de la barra de comandos"],
     ]
       .map(
         ([key, label]) =>
@@ -1518,7 +1726,7 @@ function settingsDialog() {
       )
       .join(
         "",
-      )}<p class="settings-note">Se guardan carpetas y pestañas. Las restauradas inician un shell al abrirlas; los procesos y la salida anterior no se recuperan. El historial del compositor se guarda sin cifrar solo si lo habilitas.</p><button id="clear-history" class="text-button">Borrar historial del compositor</button><div class="settings-path"><span class="label">CONFIGURACIÓN LOCAL</span><code>${escapeHTML(boot.configPath)}</code></div></div><div class="modal-footer"><span class="muted small-text">Los cambios se guardan automáticamente</span><button id="done-settings" class="button primary">Listo</button></div>`,
+      )}<p class="settings-note">Se guardan carpetas y pestañas. Las restauradas inician un shell al abrirlas; los procesos y la salida anterior no se recuperan. El historial de la barra de comandos se guarda sin cifrar solo si lo habilitas.</p><button id="clear-history" class="text-button">Borrar historial de la barra de comandos</button><div class="settings-path"><span class="label">CONFIGURACIÓN LOCAL</span><code>${escapeHTML(boot.configPath)}</code></div></div><div class="modal-footer"><span class="muted small-text">Los cambios se guardan automáticamente</span><button id="done-settings" class="button primary">Listo</button></div>`,
   );
   for (const b of document.querySelectorAll("[data-theme-choice]"))
     b.onclick = () => {
@@ -1550,14 +1758,14 @@ function settingsDialog() {
   $("#clear-history").onclick = () => {
     history = [];
     scheduleSave();
-    toast("Historial del compositor borrado");
+    toast("Historial de la barra de comandos borrado");
   };
   $("#done-settings").onclick = () => closeModal();
 }
 
 const shortcutRows = [
   ["Ctrl + K", "Abrir paleta de comandos"],
-  ["Ctrl + Espacio", "Enfocar compositor"],
+  ["Ctrl + Espacio", "Enfocar barra de comandos"],
   ["Ctrl + Shift + T", "Nueva terminal"],
   ["Ctrl + Shift + D", "Dividir en columnas"],
   ["Ctrl + Shift + E", "Dividir en filas"],
@@ -1566,7 +1774,7 @@ const shortcutRows = [
   ["Ctrl + Shift + S", "Guardar espacio"],
   ["Ctrl + Shift + W", "Cerrar panel"],
   ["Alt + 1…8", "Abrir pestaña"],
-  ["Tab", "Autocompletar (shell o compositor)"],
+  ["Tab", "Autocompletar (shell o barra de comandos)"],
   ["Ctrl + C", "Interrumpir programa en terminal"],
   ["Ctrl + Shift + C", "Copiar selección"],
   ["Ctrl + Shift + V", "Pegar del portapapeles"],
@@ -1741,6 +1949,12 @@ function bindEvents() {
   $("#status-help").onclick = helpDialog;
   $("#add-snippet").onclick = addSnippet;
   $("#main-title").ondblclick = renameWorkspace;
+  $("#files-hidden").onclick = () => {
+    settings.showHidden = !settings.showHidden;
+    applySettings();
+    loadFiles(filePath || current().cwd);
+    scheduleSave();
+  };
   $("#files-up").onclick = () => loadFiles(fileParent || boot.home);
   $("#files-refresh").onclick = () => loadFiles(filePath || current().cwd);
   $("#file-path").onclick = () =>
@@ -1956,3 +2170,5 @@ async function init() {
   }
 }
 init();
+
+document.fonts.ready.then(() => requestAnimationFrame(fitVisible));
