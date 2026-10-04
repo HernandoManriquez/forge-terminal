@@ -1,5 +1,32 @@
 # Cambios
 
+## 0.4.0
+
+- Completa las seis herramientas: registro/atajos, paleta, HTTP, inspector, datos y snippets.
+- Inspector real de puertos TCP/UDP y procesos en Linux/Windows con filtros,
+  ordenación, paginación, detalles, CWD, copia y actualización manual.
+- Terminación confirmada con identidad del proceso; pidfd/SIGTERM en Linux y
+  handle retenido/TerminateProcess en Windows, con protección de procesos críticos.
+- Enlace explícito desde un puerto hacia navegador o API Tester sin envío automático.
+- JSON/YAML/XML: validar, formatear, minificar, conversiones con límites explícitos,
+  diagnóstico de errores, copiar, abrir archivos y guardar como sin sobrescritura.
+- Selección JSON real desde xterm hacia herramientas de datos.
+- Snippets con parámetros/defaults, vista previa, ejecución explícita, favoritos,
+  CRUD, atajos compartidos e importación/exportación portable.
+- Conserva las mejoras de pestañas, cwd, Git, archivos ocultos, editor y scroll.
+- El respaldo 0.4.0-preview.1 anterior al inspector se conserva independientemente.
+
+## 0.4.0-preview.1 — respaldo previo al inspector
+
+- Registro de acciones compartido por teclado, paleta, botones y editor.
+- Atajos configurables con búsqueda, conflictos Reemplazar/Cancelar y persistencia.
+- Paleta fuzzy con categorías, teclado, disponibilidad contextual y favoritos.
+- Ctrl+F en terminal y editor; paleta Ctrl+Shift+P, API Tester Ctrl+Alt+C.
+- HTTP real, auth, parámetros, headers, cuerpo, respuesta y cURL por shell.
+- Plantillas e historial limitados; valores sensibles y respuestas solo en memoria.
+- El foco al abrir modales respeta el campo seleccionado; Escape devuelve control.
+- Inspector, herramientas de datos y snippets parametrizados aún pendientes.
+
 ## 0.3.0
 
 - Seleccionar archivos ya no inserta rutas. Menú contextual con Editar, Copiar

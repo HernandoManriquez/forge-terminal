@@ -1,3 +1,8 @@
+import { ActionRegistry } from "./actions/registry.js";
+import { registerCatalog } from "./actions/catalog.js";
+import { openPalette } from "./command-palette/palette.js";
+import { openShortcuts } from "./shortcuts/preferences.js";
+import { ToolsStore, createToolUI } from "./tools/shared.js";
 const $ = (s) => document.querySelector(s),
   text = $("#editor-text");
 let doc = null,
@@ -300,12 +305,116 @@ async function requestClose() {
     navigating = false;
   }
 }
-$("#editor-new").onclick = newFile;
-$("#editor-open").onclick = openPathDialog;
-$("#editor-save").onclick = () => save();
-$("#editor-save-as").onclick = () => save(true);
-$("#editor-reload").onclick = () => doc && openFile(doc.path, true);
-$("#editor-close").onclick = requestClose;
+let editorRegistry, editorStore, editorToolUI;
+function setupEditorActions() {
+  editorRegistry = new ActionRegistry(editorStore.state.shortcuts || {});
+  const toolDialog = document.createElement("dialog");
+  toolDialog.id = "editor-tool-window";
+  document.body.append(toolDialog);
+  let cleanup;
+  const close = () => {
+    cleanup?.();
+    cleanup = null;
+    toolDialog.close();
+    toolDialog.innerHTML = "";
+    text.focus();
+  };
+  editorToolUI = createToolUI({
+    showModal: (html) => {
+      close();
+      toolDialog.innerHTML = `<div id="modal">${html}</div>`;
+      toolDialog.showModal();
+      toolDialog.querySelector(".modal-close").onclick = close;
+    },
+    closeModal: close,
+    setCleanup: (fn) => {
+      cleanup = fn;
+    },
+    toast: error,
+  });
+  toolDialog.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    close();
+  });
+  registerCatalog(editorRegistry, {
+    "editor.fileOpen": openPathDialog,
+    "editor.new": newFile,
+    "editor.save": () => save(),
+    "editor.saveAs": () => save(true),
+    "editor.close": requestClose,
+    "editor.search": openFind,
+    "commandPalette.open": () =>
+      openPalette(editorToolUI, editorRegistry, "editor"),
+    "shortcuts.open": () =>
+      openShortcuts(editorToolUI, editorRegistry, editorStore),
+  });
+  for (const [id, action] of Object.entries({
+    "editor-new": "editor.new",
+    "editor-open": "editor.fileOpen",
+    "editor-save": "editor.save",
+    "editor-save-as": "editor.saveAs",
+    "editor-close": "editor.close",
+  }))
+    $("#" + id).onclick = () =>
+      editorRegistry.invoke(action, "editor").catch((e) => error(e.message));
+  $("#editor-reload").onclick = () => doc && openFile(doc.path, true);
+  window.addEventListener("focus", () =>
+    editorStore
+      .load()
+      .then((state) => {
+        editorRegistry.overrides = state.shortcuts || {};
+      })
+      .catch(() => {}),
+  );
+}
+function openFind() {
+  let bar = $("#editor-find-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "editor-find-bar";
+    bar.className = "tool-row";
+    bar.innerHTML =
+      '<input id="editor-find" aria-label="Buscar en archivo" placeholder="Buscar en archivo"><button id="editor-find-prev">Anterior</button><button id="editor-find-next">Siguiente</button><span id="editor-find-status" role="status"></span><button id="editor-find-close" aria-label="Cerrar búsqueda">×</button>';
+    text.before(bar);
+    const find = (back) => {
+      const q = $("#editor-find").value;
+      if (!q) return;
+      const content = text.value.toLowerCase(),
+        query = q.toLowerCase();
+      let pos = back
+        ? content.lastIndexOf(query, Math.max(0, text.selectionStart - 1))
+        : content.indexOf(query, text.selectionEnd);
+      if (pos < 0)
+        pos = back ? content.lastIndexOf(query) : content.indexOf(query);
+      $("#editor-find-status").textContent =
+        pos < 0 ? "Sin coincidencias" : "Coincidencia";
+      if (pos >= 0) {
+        text.focus();
+        text.setSelectionRange(pos, pos + q.length);
+        text.scrollTop = Math.max(
+          0,
+          (text.value.slice(0, pos).split("\n").length - 3) *
+            (parseFloat(getComputedStyle(text).lineHeight) || 20),
+        );
+      }
+    };
+    $("#editor-find-next").onclick = () => find(false);
+    $("#editor-find-prev").onclick = () => find(true);
+    $("#editor-find").onkeydown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        find(e.shiftKey);
+      }
+    };
+    $("#editor-find-close").onclick = () => {
+      bar.hidden = true;
+      text.focus();
+    };
+  }
+  bar.hidden = false;
+  $("#editor-find").focus();
+  $("#editor-find").select();
+}
 $("#editor-up").onclick = () => loadFolder(parent);
 $("#editor-refresh").onclick = () => loadFolder(folder);
 $("#editor-hidden").onchange = () => loadFolder(folder);
@@ -320,21 +429,21 @@ text.oninput = update;
 for (const name of ["keyup", "click", "select"])
   text.addEventListener(name, updateCursor);
 document.addEventListener("keydown", (e) => {
-  if (!(e.ctrlKey || e.metaKey) || $("#editor-dialog").open) return;
-  const k = e.key.toLowerCase();
-  if (k === "s") {
-    e.preventDefault();
-    save(e.shiftKey);
+  if ($("#editor-dialog").open || $("#editor-tool-window")?.open) return;
+  if (
+    e.key === "Escape" &&
+    $("#editor-find-bar") &&
+    !$("#editor-find-bar").hidden
+  ) {
+    $("#editor-find-close").click();
+    return;
   }
-  if (k === "o") {
-    e.preventDefault();
-    openPathDialog();
-  }
-  if (k === "w") {
-    e.preventDefault();
-    requestClose();
-  }
+  const a = editorRegistry?.resolve(e, "editor");
+  if (!a || e.repeat) return;
+  e.preventDefault();
+  editorRegistry.invoke(a.id, "editor").catch((e) => error(e.message));
 });
+
 window.addEventListener("beforeunload", (e) => {
   if (!closing && dirty()) {
     e.preventDefault();
@@ -347,6 +456,9 @@ update();
 async function init() {
   try {
     boot = await api("/api/bootstrap");
+    editorStore = new ToolsStore(api);
+    await editorStore.load();
+    setupEditorActions();
     const s = boot.config?.settings || {};
     document.documentElement.dataset.theme = [
       "obsidian",

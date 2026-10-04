@@ -1,0 +1,18 @@
+{
+  "status": "PASS",
+  "passed": 3,
+  "results": [
+    {
+      "name": "Real listening port has PID, filters and HTTP prefill without sending",
+      "status": "PASS"
+    },
+    {
+      "name": "Process detail, cancellation and confirmed termination affect only owned child",
+      "status": "PASS"
+    },
+    {
+      "name": "Inspector preferences survive reload and no tool opens by default",
+      "status": "PASS"
+    }
+  ]
+}

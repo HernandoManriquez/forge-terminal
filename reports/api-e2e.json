@@ -1,0 +1,22 @@
+{
+  "status": "PASS",
+  "passed": 4,
+  "results": [
+    {
+      "name": "API Tester sends real method, query, JSON and bearer auth",
+      "status": "PASS"
+    },
+    {
+      "name": "Saved requests and bounded history never persist live secrets or response bodies",
+      "status": "PASS"
+    },
+    {
+      "name": "Equivalent cURL runs in the existing real terminal",
+      "status": "PASS"
+    },
+    {
+      "name": "Repeat is session-scoped; cancellation leaves the terminal usable",
+      "status": "PASS"
+    }
+  ]
+}

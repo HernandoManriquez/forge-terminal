@@ -24,13 +24,11 @@ async function check(name, fn) {
   console.log("PASS", name);
 }
 const row = (name) =>
-  page
-    .locator(".file-entry")
-    .filter({
-      has: page.locator("span", {
-        hasText: new RegExp("^" + name.replaceAll(".", "\\.") + "$"),
-      }),
-    });
+  page.locator(".file-entry").filter({
+    has: page.locator("span", {
+      hasText: new RegExp("^" + name.replaceAll(".", "\\.") + "$"),
+    }),
+  });
 const entry = (name) =>
   editor
     .locator(".editor-file")

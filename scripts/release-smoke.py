@@ -11,6 +11,7 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 BINARY = ROOT / "build/forge-linux-x64"
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]
 processes = []
 checks = []
 report = {"status": "FAIL", "platform": "Linux x64", "checks": checks}
@@ -29,8 +30,8 @@ def start(cwd, config, extra=()):
 
 
 try:
-    assert sp.check_output([str(BINARY), "--version"], text=True).strip() == "Forge Terminal 0.3.0"
-    checks.append("Native Linux binary reports 0.3.0")
+    assert sp.check_output([str(BINARY), "--version"], text=True).strip() == "Forge Terminal " + VERSION
+    checks.append("Native Linux binary reports " + VERSION)
     with tempfile.TemporaryDirectory(prefix="forge-release-") as temp:
         project = Path(temp) / "project with spaces"
         project.mkdir()
@@ -40,11 +41,11 @@ try:
         main = start(project, Path(temp) / "main-config")
         editor = start(project, Path(temp) / "editor-config", ["--editor", str(doc)])
         origin = lambda url: urllib.parse.urlsplit(url)._replace(path="", query="", fragment="").geturl()
-        assert "0.3" in browser.open(main, timeout=5).read().decode()
+        assert "0.4" in browser.open(main, timeout=5).read().decode()
         boot = json.load(browser.open(origin(main) + "/api/bootstrap", timeout=5))
         assert boot["startupCwd"] == str(project)
         assert "terminal-surface" in browser.open(origin(main) + "/app.js", timeout=5).read().decode()
-        checks.append("Authenticated terminal has embedded 0.3 UI and launch cwd with spaces")
+        checks.append("Authenticated terminal has embedded 0.4 UI and launch cwd with spaces")
         assert "Contenido del archivo" in browser.open(editor, timeout=5).read().decode()
         assert "Guardar como" in browser.open(origin(editor) + "/editor.js", timeout=5).read().decode()
         document = json.load(browser.open(origin(editor) + "/api/editor/file?" +

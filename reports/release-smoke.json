@@ -2,8 +2,8 @@
   "status": "PASS",
   "platform": "Linux x64",
   "checks": [
-    "Native Linux binary reports 0.3.0",
-    "Authenticated terminal has embedded 0.3 UI and launch cwd with spaces",
+    "Native Linux binary reports 0.4.0",
+    "Authenticated terminal has embedded 0.4 UI and launch cwd with spaces",
     "Standalone editor serves embedded UI and actual dotfile",
     "Two processes remain authenticated with one shared cookie jar"
   ]

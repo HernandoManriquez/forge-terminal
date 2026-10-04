@@ -25,3 +25,5 @@ await build({
 });
 await cp("src/ui/app/editor.html", "src/ui/dist/editor.html");
 await cp("src/ui/app/editor.css", "src/ui/dist/editor.css");
+
+await cp("src/ui/app/tools/tools.css", "src/ui/dist/tools.css");

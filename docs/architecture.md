@@ -92,3 +92,60 @@ se baja al final únicamente si ese panel continúa en modo de seguimiento.
 
 Los enlaces describen las tecnologías utilizadas; la evidencia específica de
 Forge está en las pruebas y reportes incluidos.
+
+## Acciones, herramientas y HTTP (0.4)
+
+`actions/registry.js` es la única resolución de atajos y acciones; `catalog.js`
+comparte descriptores entre terminal y editor. `command-palette/` consulta el
+registro en cada apertura. `shortcuts/` gestiona persistencia y conflictos por
+contexto. Los favoritos se registran dinámicamente con sus IDs persistentes.
+`tools/shared.js` reutiliza el modal y ofrece un store de actualizaciones parciales.
+
+`tools.json` se escribe de forma atómica con mutex, límite 1 MiB y permisos 0600
+cuando el sistema los soporta. `api_tester.go` valida el HTTP y elimina valores
+sensibles de los guardados también en el backend. No se guardan respuestas,
+auth ni valores de variables. Nombre y ruta URL pertenecen a la plantilla;
+no deben contener secretos. HTTP: 30 s, cuatro solicitudes, cuerpo 256 KiB,
+respuesta 2 MiB, TLS estándar y sin seguimiento automático de redirects.
+La cancelación cierra la solicitud de Go mediante su contexto. El panel aborta
+al cerrarse. La ejecución cURL reutiliza el PTY y la confirmación de multilínea,
+sin registrar el comando en el historial de Forge.
+
+Archivos principales: `src/ui/app/{actions,shortcuts,command-palette,api-tester,tools}/`,
+`main.js`, `editor.js`, `src/internal/server/{tools_state,api_tester}.go`.
+
+## Inspector de sistema
+
+`inspector.go` consulta gopsutil/v4 4.26.9. Usa APIs del sistema, no analiza salida
+localizada de comandos de shell. El backend fija /proc, /sys y /etc reales en el
+contexto Linux y consulta manualmente con timeout y exclusión entre snapshots.
+Limita procesos/puertos y calcula CPU por delta; la UI pagina 75 filas y persiste
+solo filtros/orden. Campos inaccesibles son opcionales. El detalle consulta CWD,
+argumentos y una identidad de creación para verificar cualquier terminación.
+
+Linux retiene pidfd y compara starttime antes de enviar SIGTERM. Windows retiene
+un handle con permisos mínimos, compara FILETIME y consulta IsProcessCritical
+antes de TerminateProcess. El servidor exige confirmación y protege Forge/PID1.
+Una carrera de reutilización de PID no cambia el objeto al que apunta el handle.
+Navegador: URL HTTP/HTTPS validada y xdg-open/ShellExecute con argumentos separados.
+El API Tester recibe una URL inicial sin enviar automáticamente. Sin refresco periódico.
+
+## Datos y snippets
+
+`data-tools/` analiza JSON sin convertir sus tokens numéricos al formatear. YAML2
+2.9.1 aporta el AST y localización de errores; se limitan aliases, profundidad y
+conversiones. XML usa DOMParser del motor, rechaza DTD/entidades y mantiene texto
+mixto y xml:space al formatear. La conversión XML tiene un mapeo documentado con
+rechazo explícito cuando no es representable. Archivos usan las APIs del editor;
+Guardar como exige creación exclusiva. Ningún contenido se persiste en tools.json.
+
+`snippets/` migra favoritos y registra acciones snippet.ID que abren preparación.
+Los parámetros se sustituyen literalmente, no se evalúan; el límite de comando
+coincide con el PTY. Solo Ejecutar llama al mecanismo existente de envío, incluida
+la revisión multilínea. Copiar/insertar/seleccionar/importar nunca envían Enter.
+JSON portable incluye plantillas, no valores efímeros ni asignaciones de atajos.
+El estado se escribe por patches bajo el mutex compartido con las otras herramientas.
+
+Archivos añadidos: `src/internal/server/inspector{,_linux,_windows}.go`,
+`src/ui/app/{port-process-inspector,data-tools,snippets}/` y sus pruebas Go/JS/E2E.
+

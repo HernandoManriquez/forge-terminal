@@ -24,12 +24,14 @@ import (
 const MaxSessions = 8
 
 type Server struct {
+	inspector                       processInspector
 	assets                          fs.FS
 	configDir, version, token, host string
 	startupCwd                      string
 	editorFile                      string
 	editorLauncher                  func(string) error
 	editorMu                        sync.Mutex
+	apiSlots                        chan struct{}
 	listener                        net.Listener
 	http                            *http.Server
 	mu                              sync.Mutex
@@ -62,7 +64,7 @@ func New(assets fs.FS, configDir, version string) (*Server, error) {
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
 	}
-	return &Server{assets: assets, startupCwd: startupCwd, configDir: configDir, version: version, token: hex.EncodeToString(b), sessions: map[string]*session{}, slots: make(chan struct{}, MaxSessions), closed: make(chan struct{}), profiles: terminal.Profiles()}, nil
+	return &Server{assets: assets, startupCwd: startupCwd, configDir: configDir, version: version, token: hex.EncodeToString(b), apiSlots: make(chan struct{}, 4), sessions: map[string]*session{}, slots: make(chan struct{}, MaxSessions), closed: make(chan struct{}), profiles: terminal.Profiles()}, nil
 }
 
 func (s *Server) Start() error {
@@ -75,6 +77,13 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/bootstrap", s.bootstrap)
 	mux.HandleFunc("POST /api/config", s.saveConfig)
+	mux.HandleFunc("POST /api/tools/http", s.apiTest)
+	mux.HandleFunc("GET /api/tools/inspect", s.inspect)
+	mux.HandleFunc("GET /api/tools/process", s.inspectDetail)
+	mux.HandleFunc("POST /api/tools/process/terminate", s.inspectTerminate)
+	mux.HandleFunc("POST /api/tools/browser", s.inspectBrowser)
+	mux.HandleFunc("GET /api/tools/state", s.toolsState)
+	mux.HandleFunc("POST /api/tools/state", s.saveToolsState)
 	mux.HandleFunc("GET /api/files", s.files)
 	mux.HandleFunc("POST /api/editor/open", s.editorOpen)
 	mux.HandleFunc("GET /api/editor/file", s.editorRead)

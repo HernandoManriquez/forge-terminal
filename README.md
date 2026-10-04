@@ -1,7 +1,7 @@
 # Forge Terminal
 
 Una terminal de escritorio para Windows y Linux, con paneles ajustables,
-autocompletado y espacios de trabajo. **MVP 0.3.0 · x64 · MIT**
+autocompletado y espacios de trabajo. **MVP 0.4.0 · x64 · MIT**
 
 ![Forge Terminal](reports/forge-terminal.png)
 
@@ -11,7 +11,7 @@ No necesitas instalar Go, Node.js ni npm para usar los binarios.
 
 ### Windows
 
-1. Descomprime el paquete `forge-terminal-0.3.0-windows-x64.zip`.
+1. Descomprime el paquete `forge-terminal-0.4.0-windows-x64.zip`.
 2. Abre `forge.exe`.
 3. Selecciona tu shell desde **Nueva terminal**: PowerShell 7, Windows PowerShell,
    CMD o WSL, según lo instalado en tu equipo.
@@ -26,7 +26,7 @@ en Windows no se pudo validar durante esta entrega.
 
 ### Linux
 
-Descomprime `forge-terminal-0.3.0-linux-x64.zip` e instala el motor gráfico del
+Descomprime `forge-terminal-0.4.0-linux-x64.zip` e instala el motor gráfico del
 sistema si todavía no lo tienes:
 
 ```bash
@@ -77,7 +77,12 @@ solo escucha en `127.0.0.1`; no queda publicado en la red.
 | Editor simple | **Editar** abre otra ventana con texto plano, explorador, Nuevo, Abrir, Guardar, Guardar como y Cerrar. También se abre con doble clic o Enter sobre un archivo. |
 | Salida y scroll | Filas completas con margen inferior. Sigue la última línea; al subir al historial se pausa y al volver al final se reanuda. |
 | Contexto Git | Pulsa la rama para ver archivos modificados, nuevos, renombrados o eliminados, diferencias preparadas y sin preparar y ramas locales/remotas conocidas. Incluye **Actualizar**; el visor es de solo lectura. |
-| Paleta | Encuentra acciones, preferencias y favoritos con Ctrl+K. |
+| Paleta | Acciones compartidas, búsqueda fuzzy, categorías, atajos y disponibilidad por contexto. Ctrl+Shift+P o Ctrl+K. |
+| Atajos configurables | Preferencias → Atajos de teclado: buscar, modificar, quitar, restaurar y resolver conflictos. |
+| API Tester | Construye peticiones HTTP reales, revisa respuesta y genera cURL. Ctrl+Alt+C o Herramientas. |
+| Puertos y procesos | Consulta puertos/PID, CPU, memoria y detalles; filtra, ordena y termina procesos con confirmación. Ctrl+Alt+P. |
+| JSON / YAML / XML | Valida, formatea, minifica y convierte datos. Abre archivos o guarda el resultado como uno nuevo. Ctrl+Alt+J. |
+| Snippets parametrizados | Organiza plantillas con parámetros, favoritos, atajos e importación/exportación JSON. Ctrl+Alt+S. |
 | Búsqueda | Busca en las líneas que retiene cada terminal. |
 | Enfoque | Oculta paneles laterales para dar espacio al terminal. |
 | Exportar salida | Guarda el buffer retenido en un archivo de texto y muestra su ruta. |
@@ -126,11 +131,115 @@ En modo `--serve`, **Editar** abre una ventana del navegador. Permite ventanas
 emergentes para la dirección local si el navegador las bloquea. La terminal
 permanece en su ventana y los editores nativos abiertos sobreviven a su cierre.
 
+## Herramientas de terminal 0.4
+
+Abre **Herramientas** con **Ctrl+Alt+T**. Las seis incorporaciones son atajos
+configurables, paleta compartida, API Tester, inspector de puertos/procesos,
+herramientas de datos y snippets parametrizados. Se conservan el editor simple,
+las pestañas en segundo plano y las mejoras de scroll de 0.3. El respaldo
+`0.4.0-preview.1` anterior al inspector se mantiene como entrega independiente.
+
+### API Tester
+
+Abre **Herramientas → API Tester** o pulsa **Ctrl+Alt+C**. Configura método,
+URL, parámetros, headers, None/Bearer/Basic y cuerpo None/Raw/JSON/Form.
+**Enviar** realiza HTTP desde Go; no depende de CORS. La respuesta muestra
+estado, tiempo, tamaño y pestañas Body/Headers/Raw; JSON tiene formato y colores.
+**Copiar cURL** y **Ejecutar en terminal** usan el perfil del shell activo.
+La paleta permite repetir la última petición de la sesión explícitamente.
+
+Se conservan hasta 50 plantillas y 20 solicitudes recientes en `tools.json`,
+junto a los atajos, separado de la configuración de pestañas. Como Forge no tiene
+un almacén cifrado de secretos, los guardados omiten los valores de parámetros,
+headers, autenticación y cuerpo; conservan referencias completas `{{VARIABLE}}`.
+Rellena las variables en el panel, una línea `NOMBRE=valor`. Sus valores y las
+respuestas solo viven en memoria. No incluyas secretos en el nombre o ruta de la URL.
+
+HTTP/HTTPS con validación TLS, timeout de 30 s, sin cookies ni redirecciones
+automáticas. Límite: cuerpo 256 KiB; respuesta 2 MiB, marcada si se trunca;
+binarios en base64. Se admiten hasta cuatro solicitudes simultáneas. Usar cURL
+en la terminal puede dejar credenciales en el historial del shell. Forge no
+registra ese comando en el historial de su barra de comandos. La repetición se
+habilita después de enviar y no sobrevive al reinicio.
+
+En Bash/Zsh/Fish se usan argumentos escapados; en PowerShell/CMD se transmite
+configuración a `curl.exe` por stdin para conservar comillas y Unicode. Requiere
+cURL instalado para ejecutar el comando generado; **Enviar** no lo necesita.
+
+### Puertos y procesos
+
+Abre **Ctrl+Alt+P**. Las pestañas **Puertos** y **Procesos** consultan el sistema
+real bajo demanda. Filtra por texto, protocolo o estado; ordena por puerto, PID,
+CPU o memoria. Hay 75 filas por página y un botón **Actualizar**. CPU compara
+las dos últimas consultas: la primera muestra un guion; 100 % equivale a un núcleo.
+Memoria muestra RSS. Los datos no disponibles por permisos se indican sin elevar
+privilegios ni intentar ejecutar comandos como administrador.
+
+Selecciona un PID para ver ejecutable, argumentos, usuario, PPID, puertos y ruta
+de trabajo cuando el sistema permite consultarla. Puedes copiar datos o comandos
+nativos de diagnóstico y abrir el CWD en el explorador. Abrir un puerto en el
+navegador es explícito y requiere confirmar que sirve HTTP. **API Tester** prepara
+la URL sin enviar una petición. Los comodines de escucha se convierten a loopback.
+
+**Terminar** requiere detalle actualizado y confirmación. Forge comprueba la
+identidad del proceso para evitar actuar sobre un PID reutilizado. Linux envía
+SIGTERM mediante pidfd (kernel 5.3 o posterior); Windows usa TerminateProcess y
+protege los procesos marcados críticos por el sistema. Se protegen el proceso
+Forge y PID 1. Si no puede verificar identidad o permisos, muestra un error.
+Un proceso Linux puede ignorar SIGTERM: actualiza para comprobar el resultado.
+Consulta limitada a 8 s, 5.000 procesos y 10.000 puertos, con aviso de truncado.
+
+### JSON / YAML / XML
+
+Abre **Ctrl+Alt+J**, pega texto o usa **Abrir archivo**. Elige formato, indentación
+y acción: **Validar**, **Formatear**, **Minificar** o convertir. Los errores muestran
+línea/columna cuando el analizador puede proporcionarlas y conservan el resultado
+anterior. Puedes copiar o **Guardar como** en un archivo nuevo; nunca sobrescribe
+un archivo existente. Una selección JSON de la terminal ofrece **Abrir como JSON**
+en el menú contextual.
+
+Límite: 512 KiB y 128 niveles. Formatear/minificar JSON conserva los números
+originales, incluso identificadores grandes. Para convertir se rechazan claves
+duplicadas o enteros que perderían precisión. YAML limita aliases y rechaza ciclos
+al convertir a JSON. XML conserva contenido mixto y `xml:space`, rechaza entidades
+externas/DTD y limita la cantidad de nodos.
+
+La conversión XML usa la raíz como clave, `@atributo`, `#text` y arrays para
+hermanos repetidos. Sus valores escalares son texto; JSON null produce un elemento
+vacío. Para evitar perder significado, no convierte XML con namespaces, comentarios,
+instrucciones, contenido mixto u orden intercalado incompatible con ese mapeo.
+Solo se persisten preferencias; el texto y los resultados quedan en memoria.
+
+### Snippets parametrizados
+
+Abre **Ctrl+Alt+S** para crear, editar, duplicar, eliminar, buscar por nombre/comando,
+filtrar por categoría y marcar favoritos. Ejemplo: `ssh -p {{puerto:22}} {{usuario}}@{{host}}`.
+**Preparar** pide los parámetros y muestra el comando completo antes de **Copiar**,
+**Insertar en barra** o **Ejecutar**. Los valores se insertan literalmente: coloca
+las comillas apropiadas para tu shell en la plantilla y revisa la vista previa.
+Los valores rellenados no se guardan; la plantilla sí es texto local.
+
+**Asignar atajo** usa el mismo registro y control de conflictos que las demás
+acciones. El atajo abre la preparación sin ejecutar. Los favoritos sin parámetros
+siguen rellenando la barra de comandos como antes; los parametrizados abren la
+vista previa. Quitar una estrella conserva la plantilla en el gestor.
+
+Importa/exporta JSON por texto o archivo. Importar añade copias con IDs nuevos,
+sin ejecutar ni asignar atajos automáticamente. Máximo 100 plantillas, 8.192
+caracteres por comando y 30 parámetros. Nunca se ejecuta al seleccionar, restaurar
+la configuración ni abrir Forge; solo tras la acción explícita **Ejecutar**.
+
 ## Atajos
 
 | Atajo | Acción |
 |---|---|
-| `Ctrl+K` | Paleta de comandos |
+| `Ctrl+Shift+P` / `Ctrl+K` | Paleta de comandos |
+| `Ctrl+Alt+C` | API Tester |
+| `Ctrl+Alt+P` | Puertos y procesos |
+| `Ctrl+Alt+J` | JSON / YAML / XML |
+| `Ctrl+Alt+S` | Snippets parametrizados |
+| `Ctrl+Alt+T` | Herramientas |
+| `Ctrl+F` | Buscar en terminal o archivo, según ventana |
 | `Ctrl+Espacio` | Enfocar la barra de comandos |
 | `Ctrl+Shift+T` | Nueva terminal |
 | `Ctrl+Shift+D` | Añadir una vista en columnas (hasta 3) |
@@ -145,6 +254,10 @@ permanece en su ventana y los editores nativos abiertos sobreviven a su cierre.
 | `Shift+Enter` en la barra de comandos | Insertar sin enviar Enter |
 | `Tab` en la barra de comandos | Aceptar sugerencia |
 
+Configura estas combinaciones en **Preferencias → Atajos de teclado**. Reemplazar
+un conflicto quita esa combinación de la acción anterior; Cancelar la conserva.
+El editor comparte el registro y permite sus propios atajos de guardado/búsqueda.
+
 Si el acceso al portapapeles está restringido por el motor del sistema, `Ctrl+V`
 conserva el pegado normal del terminal. `Ctrl+C` sigue siendo interrupción del
 programa y `Ctrl+R` conserva la búsqueda de historial del shell.
@@ -156,6 +269,8 @@ Las preferencias se guardan en:
 - Linux: `$XDG_CONFIG_HOME/forge-terminal/settings.json`, normalmente
   `~/.config/forge-terminal/settings.json`.
 - Windows: `%AppData%\forge-terminal\settings.json`.
+- Herramientas: `tools.json` en esa misma carpeta (atajos, plantillas HTTP, historial
+  sin credenciales, snippets y preferencias de datos/inspector).
 - Exportaciones: subcarpeta `exports` dentro de esa misma carpeta.
 
 Puedes indicar otra carpeta con `--config-dir RUTA`. El motor web también puede
@@ -227,8 +342,8 @@ Si alcanzas el límite, cierra una sesión y pulsa reiniciar en la pestaña pend
 
 ## Tamaño y recursos
 
-- Binarios de aproximadamente **8 MB**, con HTML, CSS, JavaScript e iconos
-  incluidos. Consulta los tamaños exactos en `reports/validation.md`.
+- Binarios con HTML, CSS, JavaScript e iconos incluidos. Consulta los tamaños
+  exactos de esta versión en `reports/validation.md`.
 - Utiliza la vista web del sistema; no incorpora Electron ni otro navegador
   completo en el paquete.
 - Una vista web para los terminales; hasta ocho shells en ejecución, tres visibles.
@@ -321,7 +436,9 @@ resize, búsqueda, favoritos, paleta, temas, pegado, exportación, restauración
 cierre y reinicio.
 
 **Estado de esta entrega:** núcleo e interfaz probados en Linux; 17 recorridos
-E2E de terminal, 12 del editor y 4 de geometría/scroll con PTY real. El editor
+E2E de terminal, 12 del editor, 4 de geometría/scroll, 3 de acciones/atajos
+y 4 del API Tester, 3 del inspector, 4 de datos y 4 de snippets con HTTP, archivos
+y PTY reales. El editor
 nativo WebKitGTK se verifica bajo Xvfb: edición, aviso de cambios sin guardar,
 cancelación del cierre, guardado y cierre limpio. Windows se compila, pero no se
 ejecuta en esta entrega. Quedan pendientes las pruebas en escritorios reales
@@ -347,7 +464,8 @@ third_party/           WebView conservado con tres parches documentados
 El servicio solo escucha en loopback, con clave aleatoria por ejecución, cookie
 HttpOnly/SameSite Strict, comprobación de Host/Origin y CSP. El shell tiene los
 permisos del usuario que abre Forge. No es un sandbox para ejecutar software no
-confiable. La aplicación no descarga contenido remoto ni envía telemetría propia.
+confiable. La aplicación no envía telemetría propia. El API Tester contacta las direcciones
+que el usuario indica únicamente al enviar una solicitud.
 
 ## Límites del MVP
 

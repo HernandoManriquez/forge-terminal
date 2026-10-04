@@ -1,0 +1,22 @@
+{
+  "status": "PASS",
+  "passed": 4,
+  "results": [
+    {
+      "name": "JSON/YAML tools open actual file, convert and Save As without overwriting",
+      "status": "PASS"
+    },
+    {
+      "name": "XML formatting preserves mixed content, attributes and xml:space; conversion is explicit",
+      "status": "PASS"
+    },
+    {
+      "name": "Invalid XML/JSON report errors and failed operations retain previous result",
+      "status": "PASS"
+    },
+    {
+      "name": "Terminal selection opens Data Tools as JSON without executing it",
+      "status": "PASS"
+    }
+  ]
+}

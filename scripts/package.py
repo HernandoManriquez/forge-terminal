@@ -15,10 +15,13 @@ out.mkdir(parents=True, exist_ok=True)
 version = json.loads((root / 'package.json').read_text())['version']
 reports = ['validation.md', 'quality-gate.json', 'e2e.json', 'release-smoke.json',
            'editor-e2e.json', 'scroll-e2e.json', 'native-editor-smoke.json',
+           'actions-e2e.json', 'api-e2e.json', 'forge-api.png',
+           'inspector-e2e.json', 'data-e2e.json', 'snippets-e2e.json',
+           'forge-inspector.png', 'forge-data.png', 'forge-snippets.png',
            'forge-terminal.png', 'forge-paper.png', 'forge-git.png',
            'forge-editor.png', 'forge-explorer-menu.png', 'forge-terminal-scroll.png',
            'native-editor-unsaved.png', 'coverage.out']
-reports += [f'gate-{i}.log' for i in range(1, 9)]
+reports += [f'gate-{i}.log' for i in range(1, len(json.loads((root / 'quality_gate.json').read_text())['checks']) + 1)]
 common = ['README.md', 'CHANGELOG.md', 'LICENSE', 'THIRD_PARTY_NOTICES.txt']
 common += ['reports/' + name for name in reports]
 for check in ['quality-gate.json', 'release-smoke.json', 'native-editor-smoke.json']:
@@ -46,6 +49,10 @@ for platform, binary, target in [('windows', 'forge-windows-x64.exe', 'forge.exe
                    'Botón Ocultos para .gitignore, .ai y otros nombres con punto.\n'
                    'Barra de comandos: prepara texto; Insertar o Ejecutar lo envían.\n'
                    'Última fila completa; scroll sigue la salida y pausa al subir.\n\n'
+                   'Ctrl+Shift+P: paleta; preferencias: atajos configurables.\n'
+                   'Ctrl+Alt+C: API; Ctrl+Alt+P: puertos/procesos.\n'
+                   'Ctrl+Alt+J: JSON/YAML/XML; Ctrl+Alt+S: snippets.\n'
+                   'Las plantillas se revisan antes de Ejecutar; no se ejecutan al abrir.\n\n'
                    'Editor nativo Linux probado bajo Xvfb. Windows compilado,\n'
                    'pendiente de ejecución nativa. Detalles en reports/validation.md.\n')
         z.writestr('SHA256SUMS.txt', ''.join(hashlib.sha256(source.read_bytes()).hexdigest() + '  ' + name + '\n' for name, source in files.items()))

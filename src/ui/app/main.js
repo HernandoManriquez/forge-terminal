@@ -1,3 +1,15 @@
+import { createSnippets } from "./snippets/panel.js";
+import { parameters } from "./snippets/model.js";
+import { createDataTools } from "./data-tools/panel.js";
+import { looksJSON } from "./data-tools/model.js";
+import { createInspector } from "./port-process-inspector/panel.js";
+import { createAPITester } from "./api-tester/panel.js";
+import { ActionRegistry } from "./actions/registry.js";
+import { registerCatalog } from "./actions/catalog.js";
+import { openPalette } from "./command-palette/palette.js";
+import { openShortcuts } from "./shortcuts/preferences.js";
+import { ToolsStore, createToolUI, copyText } from "./tools/shared.js";
+import "./tools/tools.css";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -119,6 +131,10 @@ const escapeHTML = (s) =>
   );
 const uid = () => crypto.randomUUID();
 const panes = new Map();
+let registry, toolsStore, toolUI, snippetsController;
+const toolHandlers = {};
+const runAction = (id, ...args) =>
+  registry.invoke(id, "terminal", ...args).catch((e) => toast(e.message));
 let boot,
   settings,
   workspaces = [],
@@ -347,7 +363,7 @@ function restore() {
         )
         .slice(0, 60)
         .map((s) => ({
-          id: uid(),
+          id: typeof s.id === "string" && s.id.length <= 100 ? s.id : uid(),
           name: s.name.slice(0, 80),
           command: safeCommand(s.command),
           tag: typeof s.tag === "string" ? s.tag.slice(0, 15) : "PERSONAL",
@@ -587,6 +603,38 @@ function createPaneDOM(p) {
   p.term.loadAddon(p.fit);
   p.term.loadAddon(p.search);
   p.term.open(p.host);
+  p.host.addEventListener("contextmenu", (e) => {
+    const selection = p.term.getSelection();
+    if (!looksJSON(selection)) return;
+    e.preventDefault();
+    closeFileMenu();
+    const menu = document.createElement("div");
+    menu.className = "file-context-menu";
+    menu.setAttribute("role", "menu");
+    fileMenu = menu;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "menuitem");
+    button.textContent = "Abrir como JSON";
+    button.onclick = () => {
+      closeFileMenu();
+      runAction("dataTools.open", selection);
+    };
+    menu.append(button);
+    document.body.append(menu);
+    menu.style.left =
+      Math.min(e.clientX, innerWidth - menu.offsetWidth - 8) + "px";
+    menu.style.top =
+      Math.min(e.clientY, innerHeight - menu.offsetHeight - 8) + "px";
+    button.focus();
+    menu.onkeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeFileMenu();
+        p.term.focus();
+      }
+    };
+  });
   p.followOutput = true;
   const viewport = p.host.querySelector(".xterm-viewport");
   viewport.addEventListener("scroll", () =>
@@ -1278,7 +1326,7 @@ function showFileMenu(entry, anchor, x, y) {
       () =>
         entry.directory
           ? openProfileDialog(entry.path)
-          : openEditor(entry.path),
+          : runAction("editor.open", entry.path),
     ],
     [
       "Copiar ruta",
@@ -1342,6 +1390,15 @@ function showFileMenu(entry, anchor, x, y) {
 document.addEventListener("pointerdown", (e) => {
   if (fileMenu && !fileMenu.contains(e.target)) closeFileMenu();
 });
+window.addEventListener("focus", () => {
+  if (toolsStore && registry)
+    toolsStore
+      .load()
+      .then((state) => {
+        registry.overrides = state.shortcuts || {};
+      })
+      .catch(() => {});
+});
 window.addEventListener("resize", closeFileMenu);
 document.addEventListener("scroll", closeFileMenu, true);
 async function loadFiles(path) {
@@ -1373,11 +1430,11 @@ async function loadFiles(path) {
         else selectFile(entry.path);
       };
       if (!entry.directory) {
-        b.ondblclick = () => openEditor(entry.path);
+        b.ondblclick = () => runAction("editor.open", entry.path);
         b.onkeydown = (e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            openEditor(entry.path);
+            runAction("editor.open", entry.path);
           }
         };
       }
@@ -1405,6 +1462,20 @@ async function loadFiles(path) {
 }
 
 function renderSnippets() {
+  if (registry) {
+    for (const id of registry.actions.keys())
+      if (id.startsWith("favorite.")) registry.actions.delete(id);
+    for (const s of snippets)
+      registry.register({
+        id: "favorite." + s.id,
+        label: s.name,
+        category: "Favoritos",
+        run: () =>
+          parameters(s.command).length
+            ? snippetsController.prepare(s.id)
+            : putComposer(s.command),
+      });
+  }
   const list = $("#snippet-list");
   list.replaceChildren();
   for (const s of snippets) {
@@ -1413,19 +1484,16 @@ function renderSnippets() {
     const b = document.createElement("button");
     b.className = "snippet-main";
     b.innerHTML = `<span class="snippet-top"><strong>${escapeHTML(s.name)}</strong><span>${escapeHTML(s.tag || "PERSONAL")}</span></span><code>${escapeHTML(s.command)}</code>`;
-    b.onclick = () => putComposer(s.command);
+    b.onclick = () => runAction("favorite." + s.id);
     b.title = "Insertar en barra de comandos";
     const del = document.createElement("button");
     del.className = "snippet-delete icon-button small";
     del.innerHTML = icon("x");
     del.title = "Eliminar favorito";
     del.setAttribute("aria-label", "Eliminar " + s.name);
-    del.onclick = () => {
-      snippets = snippets.filter((x) => x.id !== s.id);
-      renderSnippets();
-      refreshIcons();
-      scheduleSave();
-    };
+    del.title = "Quitar de favoritos";
+    del.onclick = () =>
+      snippetsController.toggleFavorite(s.id).catch((e) => toast(e.message));
     row.append(b, del);
     list.append(row);
   }
@@ -1524,11 +1592,11 @@ function insertCommand(run = false) {
   }
   performCommand(p, text, run);
 }
-function performCommand(p, text, run) {
+function performCommand(p, text, run, recordHistory = true) {
   p.followOutput = true;
   p.term.scrollToBottom();
   send(p, { type: "input", data: text + (run ? "\r" : "") });
-  if (run && settings.historyEnabled) {
+  if (run && recordHistory && settings.historyEnabled) {
     history = history.filter((h) => h !== text);
     history.push(text);
     history = history.slice(-100);
@@ -1538,13 +1606,13 @@ function performCommand(p, text, run) {
   $("#suggestions").hidden = true;
   p.term.focus();
 }
-function confirmPaste(p, text, run = false) {
+function confirmPaste(p, text, run = false, recordHistory = true) {
   showModal(
     `<div class="modal-head"><h2 id="modal-title">Pegar varias líneas</h2><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><p class="modal-description">Este texto contiene saltos de línea que el shell podría ejecutar. Revisa el contenido antes de enviarlo.</p><pre class="paste-preview">${escapeHTML(text.slice(0, 16000))}</pre><div class="modal-footer"><button class="button cancel">Cancelar</button><button class="button primary confirm-paste">Pegar en terminal</button></div>`,
   );
   $(".confirm-paste").onclick = () => {
     closeModal();
-    if (run) performCommand(p, text, true);
+    if (run) performCommand(p, text, true, recordHistory);
     else p.term.paste(text);
   };
   $(".cancel").onclick = closeModal;
@@ -1558,9 +1626,11 @@ function showModal(html) {
   paletteOpen = false;
   $(".modal-close")?.addEventListener("click", () => closeModal());
   refreshIcons();
-  requestAnimationFrame(() =>
-    $("#modal input, #modal select, #modal button")?.focus(),
-  );
+  const modal = $("#modal");
+  (
+    modal.querySelector("input:not([type=checkbox]), textarea") ||
+    modal.querySelector("select, button")
+  )?.focus();
 }
 function closeModal(focus = true) {
   modalCleanup?.();
@@ -1675,31 +1745,12 @@ async function exportPane(p) {
   }
 }
 function addSnippet() {
-  showModal(
-    `<div class="modal-head"><h2 id="modal-title">Guardar comando favorito</h2><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><form id="snippet-form"><label class="field">Nombre<input id="snippet-name" required maxlength="80" placeholder="Ej. Revisar contenedores"></label><label class="field">Comando<textarea id="snippet-command" rows="4" required maxlength="8192">${escapeHTML($("#command-input").value)}</textarea></label><p class="modal-description">Los favoritos se insertan en la barra de comandos para que puedas revisarlos.</p><div class="modal-footer"><button class="button primary">Guardar favorito</button></div></form>`,
-  );
-  $("#snippet-form").onsubmit = (e) => {
-    e.preventDefault();
-    if (snippets.length >= 60) {
-      toast("Límite de 60 favoritos");
-      return;
-    }
-    snippets.push({
-      id: uid(),
-      name: $("#snippet-name").value,
-      command: safeCommand($("#snippet-command").value),
-      tag: "PERSONAL",
-    });
-    closeModal();
-    renderSnippets();
-    refreshIcons();
-    scheduleSave();
-  };
+  snippetsController.edit(undefined, $("#command-input").value);
 }
 
 function settingsDialog() {
   showModal(
-    `<div class="modal-head"><div><span class="eyebrow">HAZLO TUYO</span><h2 id="modal-title">Preferencias</h2></div><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><div class="settings-content"><span class="label">APARIENCIA</span><div class="theme-options">${[
+    `<div class="modal-head"><div><span class="eyebrow">HAZLO TUYO</span><h2 id="modal-title">Preferencias</h2></div><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><div class="settings-content"><button id="keyboard-settings" class="button">Atajos de teclado…</button><span class="label">APARIENCIA</span><div class="theme-options">${[
       ["obsidian", "Obsidiana", "#101419", "#fb9864"],
       ["midnight", "Medianoche", "#101424", "#bba4ff"],
       ["paper", "Papel", "#f7f8fa", "#b85225"],
@@ -1737,6 +1788,7 @@ function settingsDialog() {
       applySettings();
       scheduleSave();
     };
+  $("#keyboard-settings").onclick = () => runAction("shortcuts.open");
   $("#pref-font").onchange = (e) => {
     settings.fontSize = Number(e.target.value);
     applySettings();
@@ -1763,117 +1815,120 @@ function settingsDialog() {
   $("#done-settings").onclick = () => closeModal();
 }
 
-const shortcutRows = [
-  ["Ctrl + K", "Abrir paleta de comandos"],
-  ["Ctrl + Espacio", "Enfocar barra de comandos"],
-  ["Ctrl + Shift + T", "Nueva terminal"],
-  ["Ctrl + Shift + D", "Dividir en columnas"],
-  ["Ctrl + Shift + E", "Dividir en filas"],
-  ["Ctrl + Shift + G", "Buscar en la salida"],
-  ["Ctrl + Shift + F", "Modo enfoque"],
-  ["Ctrl + Shift + S", "Guardar espacio"],
-  ["Ctrl + Shift + W", "Cerrar panel"],
-  ["Alt + 1…8", "Abrir pestaña"],
-  ["Tab", "Autocompletar (shell o barra de comandos)"],
-  ["Ctrl + C", "Interrumpir programa en terminal"],
-  ["Ctrl + Shift + C", "Copiar selección"],
-  ["Ctrl + Shift + V", "Pegar del portapapeles"],
-];
 function helpDialog() {
-  showModal(
-    `<div class="modal-head"><div><span class="eyebrow">MENOS CLICS. MÁS FLUJO.</span><h2 id="modal-title">Atajos de teclado</h2></div><button class="icon-button modal-close" aria-label="Cerrar">${icon("x")}</button></div><div class="shortcut-list">${shortcutRows.map(([key, label]) => `<div><span>${label}</span><kbd>${key}</kbd></div>`).join("")}</div><p class="settings-note">Arrastra los separadores para ajustar paneles. Doble clic para repartir por igual. Doble clic sobre el espacio para renombrarlo. Clic derecho sobre una carpeta para abrir una terminal allí.</p>`,
-  );
-}
-function actions() {
-  return [
-    ["Nueva terminal", "Ctrl Shift T", "terminal", () => openProfileDialog()],
-    [
-      "Nuevo espacio de trabajo",
-      "",
-      "panels-top-left",
-      () => openProfileDialog(current().cwd, true),
-    ],
-    [
-      "Dividir en columnas",
-      "Ctrl Shift D",
-      "columns-2",
-      () => expandView("row"),
-    ],
-    ["Dividir en filas", "Ctrl Shift E", "rows-2", () => expandView("col")],
-    ["Guardar espacio", "Ctrl Shift S", "save", saveWorkspace],
-    ["Renombrar espacio", "", "more-horizontal", renameWorkspace],
-    ["Modo enfoque", "Ctrl Shift F", "maximize", toggleFocus],
-    ["Buscar en terminal", "Ctrl Shift G", "search", openSearch],
-    ["Preferencias", "", "settings-2", settingsDialog],
-    ["Nuevo comando favorito", "", "bookmark", addSnippet],
-    [
-      "Exportar salida de terminal",
-      "",
-      "download",
-      () => exportPane(current()),
-    ],
-    ["Mostrar u ocultar explorador", "", "folder", toggleLeft],
-    ["Mostrar u ocultar contexto", "", "panel-right", toggleRight],
-    ["Limpiar pantalla local", "", "rotate-ccw", () => current().term.clear()],
-    ["Atajos de teclado", "", "keyboard", helpDialog],
-    ...snippets.map((s) => [
-      "Favorito: " + s.name,
-      "",
-      "bookmark",
-      () => putComposer(s.command),
-    ]),
-  ];
+  openShortcuts(toolUI, registry, toolsStore);
 }
 function palette() {
-  showModal(
-    `<div class="palette-input-wrap">${icon("search")}<input id="palette-input" aria-label="Buscar acción" placeholder="¿Qué quieres hacer?" autocomplete="off"><kbd>Esc</kbd></div><h2 id="modal-title" class="sr-only">Paleta de comandos</h2><div id="palette-results" class="palette-results"></div><div class="palette-footer"><span>↑ ↓ navegar</span><span>↵ seleccionar</span><span>FORGE</span></div>`,
+  openPalette(toolUI, registry, "terminal");
+}
+function toolbox() {
+  const ids = [
+    "apiTester.open",
+    "portInspector.open",
+    "dataTools.open",
+    "snippets.open",
+  ];
+  toolUI.open(
+    "Herramientas",
+    `<div class="toolbox-grid">${ids
+      .map((id) => {
+        const a = registry.actions.get(id);
+        return `<button class="button" data-tool-action="${id}"><small>${escapeHTML(a.category)}</small>${escapeHTML(a.label)}</button>`;
+      })
+      .join("")}</div>`,
+    { wide: false },
   );
-  paletteOpen = true;
-  let selected = 0,
-    filtered = [];
-  const paint = () => {
-    filtered = actions().filter((a) =>
-      a[0].toLowerCase().includes($("#palette-input").value.toLowerCase()),
-    );
-    selected = Math.min(selected, Math.max(0, filtered.length - 1));
-    $("#palette-results").innerHTML =
-      filtered
-        .map(
-          ([title, key, ic], i) =>
-            `<button class="palette-action ${i === selected ? "active" : ""}" data-action="${i}">${icon(ic)}<span>${escapeHTML(title)}</span>${key ? `<kbd>${key}</kbd>` : ""}</button>`,
-        )
-        .join("") || '<p class="empty-state">Sin coincidencias</p>';
-    document
-      .querySelectorAll("[data-action]")
-      .forEach((b) => (b.onclick = () => choose(Number(b.dataset.action))));
-    refreshIcons();
-    $(".palette-action.active")?.scrollIntoView({ block: "nearest" });
+  for (const b of document.querySelectorAll("[data-tool-action]"))
+    b.onclick = () => runAction(b.dataset.toolAction);
+}
+function runToolCommand(command) {
+  const p = current();
+  if (p?.state !== "connected") throw Error("Abre una terminal conectada");
+  if (command.length > 8192)
+    throw Error("El comando supera 8192 caracteres; usa Enviar o copia cURL");
+  closeModal();
+  if (/[\r\n]/.test(command)) confirmPaste(p, command, true, false);
+  else performCommand(p, command, true, false);
+}
+function initializeActions() {
+  registry = new ActionRegistry(toolsStore.state.shortcuts || {});
+  toolUI = createToolUI({
+    showModal,
+    closeModal,
+    setCleanup: (fn) => {
+      modalCleanup = fn;
+    },
+    toast,
+  });
+  const handlers = {
+    "terminal.new": () => openProfileDialog(),
+    "terminal.close": () => closePaneDialog(activePane),
+    "terminal.split": () => expandView("row"),
+    "terminal.splitRows": () => expandView("col"),
+    "terminal.clear": () => current()?.term?.clear(),
+    "terminal.search": openSearch,
+    "terminal.copy": () => copyText(current()?.term?.getSelection() || ""),
+    "terminal.paste": async () => {
+      const text = await navigator.clipboard.readText();
+      if (/[\r\n]/.test(text)) confirmPaste(current(), text);
+      else current().term.paste(text);
+    },
+    "terminal.export": () => exportPane(current()),
+    "terminal.focus": toggleFocus,
+    "command.focus": () => $("#command-input").focus(),
+    "commandPalette.open": palette,
+    "settings.open": settingsDialog,
+    "shortcuts.open": helpDialog,
+    "toolbox.open": toolbox,
+    "workspace.new": () => openProfileDialog(current().cwd, true),
+    "workspace.save": saveWorkspace,
+    "workspace.rename": renameWorkspace,
+    "explorer.toggle": toggleLeft,
+    "context.toggle": toggleRight,
+    "git.open": openGit,
+    "editor.open": (path) =>
+      path || selectedFile
+        ? openEditor(path || selectedFile)
+        : inputDialog(
+            "Abrir editor",
+            "Ruta absoluta del archivo",
+            current().cwd,
+            openEditor,
+          ),
+    "snippets.new": addSnippet,
+    ...Object.fromEntries(
+      [
+        "apiTester.open",
+        "apiTester.repeat",
+        "portInspector.open",
+        "dataTools.open",
+        "snippets.open",
+      ].map((id) => [id, (...args) => toolHandlers[id]?.(...args)]),
+    ),
+    ...Object.fromEntries(
+      Array.from({ length: 8 }, (_, i) => [
+        `terminal.tab${i + 1}`,
+        () => {
+          const id = workspace().tabs[i];
+          if (id) setActive(id);
+        },
+      ]),
+    ),
   };
-  const choose = (i) => {
-    const action = filtered[i];
-    if (action) {
-      closeModal();
-      action[3]();
-    }
-  };
-  $("#palette-input").oninput = () => {
-    selected = 0;
-    paint();
-  };
-  $("#palette-input").onkeydown = (e) => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      selected =
-        (selected + (e.key === "ArrowDown" ? 1 : -1) + filtered.length) %
-        Math.max(1, filtered.length);
-      paint();
-    }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      choose(selected);
-    }
-  };
-  paint();
+  registerCatalog(registry, handlers, {
+    "terminal.close": () => !!current()?.term,
+    "terminal.clear": () => !!current()?.term,
+    "git.open": () => !$("#git-context").disabled,
+    ...Object.fromEntries(
+      [
+        "apiTester.open",
+        "apiTester.repeat",
+        "portInspector.open",
+        "dataTools.open",
+        "snippets.open",
+      ].map((id) => [id, () => !!toolHandlers[id]]),
+    ),
+  });
 }
 
 function toggleFocus() {
@@ -1911,22 +1966,15 @@ function search(next = true) {
   $("#search-result").textContent = found ? "Coincidencia" : "Sin resultados";
 }
 function isAppShortcut(e) {
-  const k = e.key.toLowerCase();
-  return (
-    (e.ctrlKey &&
-      (k === "k" ||
-        e.code === "Space" ||
-        (e.shiftKey &&
-          ["t", "d", "e", "g", "f", "s", "w", "c", "v"].includes(k)))) ||
-    (e.altKey && /^[1-8]$/.test(k))
-  );
+  return !$("#modal-layer").hidden || !!registry?.resolve(e, "terminal");
 }
 function bindEvents() {
-  $("#palette-button").onclick = palette;
-  $("#settings-button").onclick = settingsDialog;
-  $("#focus-button").onclick = toggleFocus;
-  $("#left-toggle").onclick = toggleLeft;
-  $("#right-toggle").onclick = toggleRight;
+  $("#toolbox-button").onclick = () => runAction("toolbox.open");
+  $("#palette-button").onclick = () => runAction("commandPalette.open");
+  $("#settings-button").onclick = () => runAction("settings.open");
+  $("#focus-button").onclick = () => runAction("terminal.focus");
+  $("#left-toggle").onclick = () => runAction("explorer.toggle");
+  $("#right-toggle").onclick = () => runAction("context.toggle");
   $("#snippets-toggle").onclick = () => {
     settings.rightVisible = true;
     settings.showSnippets = true;
@@ -1935,19 +1983,19 @@ function bindEvents() {
     scheduleSave();
     $("#snippets-section").scrollIntoView({ block: "nearest" });
   };
-  $("#new-workspace").onclick = () => openProfileDialog(current().cwd, true);
-  $("#profile-new").onclick = () => openProfileDialog();
+  $("#new-workspace").onclick = () => runAction("workspace.new");
+  $("#profile-new").onclick = () => runAction("terminal.new");
   for (const n of [1, 2, 3]) $("#view-" + n).onclick = () => setView(n);
-  $("#git-context").onclick = openGit;
+  $("#git-context").onclick = () => runAction("git.open");
   $("#split-row").onclick = () =>
     setView(leaves(workspace().tree).length, "row");
   $("#split-col").onclick = () =>
     setView(leaves(workspace().tree).length, "col");
-  $("#save-workspace").onclick = saveWorkspace;
-  $("#save-tip").onclick = saveWorkspace;
-  $("#help-button").onclick = helpDialog;
-  $("#status-help").onclick = helpDialog;
-  $("#add-snippet").onclick = addSnippet;
+  $("#save-workspace").onclick = () => runAction("workspace.save");
+  $("#save-tip").onclick = () => runAction("workspace.save");
+  $("#help-button").onclick = () => runAction("shortcuts.open");
+  $("#status-help").onclick = () => runAction("shortcuts.open");
+  $("#add-snippet").onclick = () => runAction("snippets.new");
   $("#main-title").ondblclick = renameWorkspace;
   $("#files-hidden").onclick = () => {
     settings.showHidden = !settings.showHidden;
@@ -1966,7 +2014,7 @@ function bindEvents() {
     );
   $("#change-directory").onclick = () =>
     openProfileDialog(filePath || current().cwd);
-  $("#search-button").onclick = openSearch;
+  $("#search-button").onclick = () => runAction("terminal.search");
   $("#search-input").oninput = () => search(false);
   $("#search-input").onkeydown = (e) => {
     if (e.key === "Enter") search(!e.shiftKey);
@@ -2040,51 +2088,10 @@ function bindEvents() {
       }
       return;
     }
-    if (!isAppShortcut(e)) return;
+    const action = registry.resolve(e, "terminal");
+    if (!action || e.defaultPrevented || e.repeat) return;
     e.preventDefault();
-    const k = e.key.toLowerCase();
-    if (e.altKey) {
-      const id = workspace().tabs[Number(k) - 1];
-      if (id) setActive(id);
-      return;
-    }
-    if (e.code === "Space") {
-      $("#command-input").focus();
-      return;
-    }
-    if (k === "k") {
-      palette();
-      return;
-    }
-    if (e.shiftKey) {
-      const action = {
-        t: () => openProfileDialog(),
-        d: () => expandView("row"),
-        e: () => expandView("col"),
-        g: openSearch,
-        f: toggleFocus,
-        s: saveWorkspace,
-        w: () => closePaneDialog(activePane),
-        c: async () => {
-          try {
-            await navigator.clipboard.writeText(current().term.getSelection());
-            toast("Selección copiada");
-          } catch {
-            toast("Usa el menú del sistema para copiar la selección.");
-          }
-        },
-        v: async () => {
-          try {
-            const text = await navigator.clipboard.readText();
-            if (/[\r\n]/.test(text)) confirmPaste(current(), text);
-            else current().term.paste(text);
-          } catch {
-            toast("Usa Ctrl+V para pegar con el portapapeles del sistema.");
-          }
-        },
-      };
-      action[k]?.();
-    }
+    await runAction(action.id);
   });
   for (const [id, key, direction] of [
     ["left-resizer", "leftWidth", 1],
@@ -2147,6 +2154,58 @@ async function init() {
   try {
     boot = await api("/api/bootstrap");
     restore();
+    toolsStore = new ToolsStore(api);
+    await toolsStore.load();
+    initializeActions();
+    const apiTester = createAPITester({
+      ui: toolUI,
+      store: toolsStore,
+      profile: () => current()?.profile,
+      runTerminal: runToolCommand,
+    });
+    toolHandlers["apiTester.open"] = apiTester.open;
+    const inspector = createInspector({
+      ui: toolUI,
+      api,
+      store: toolsStore,
+      openAPI: (value) => runAction("apiTester.open", value),
+      openDirectory: (path) => {
+        settings.leftVisible = true;
+        settings.showFiles = true;
+        focused = false;
+        applySettings();
+        return loadFiles(path);
+      },
+    });
+    toolHandlers["portInspector.open"] = inspector.open;
+    const dataTools = createDataTools({
+      ui: toolUI,
+      api,
+      store: toolsStore,
+      cwd: () => filePath || current()?.cwd || boot.home,
+    });
+    toolHandlers["dataTools.open"] = dataTools.open;
+    snippetsController = createSnippets({
+      ui: toolUI,
+      api,
+      store: toolsStore,
+      registry,
+      runTerminal: runToolCommand,
+      insert: putComposer,
+      shortcuts: (id) => openShortcuts(toolUI, registry, toolsStore, id),
+      cwd: () => filePath || current()?.cwd || boot.home,
+      onChange: (rows) => {
+        snippets = rows
+          .filter((s) => s.favorite)
+          .map((s) => ({ ...s, tag: s.category }));
+        renderSnippets();
+        refreshIcons();
+      },
+    });
+    await snippetsController.initialize(snippets);
+    toolHandlers["snippets.open"] = snippetsController.open;
+    toolHandlers["apiTester.repeat"] = apiTester.repeat;
+    registry.actions.get("apiTester.repeat").enabled = apiTester.canRepeat;
     bindEvents();
     render();
     refreshMetrics();

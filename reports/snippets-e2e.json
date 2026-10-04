@@ -1,0 +1,22 @@
+{
+  "status": "PASS",
+  "passed": 4,
+  "results": [
+    {
+      "name": "Create parameterized snippet, live preview, explicit run and no saved parameter values",
+      "status": "PASS"
+    },
+    {
+      "name": "Favorites, duplication, editing, category search and deletion persist",
+      "status": "PASS"
+    },
+    {
+      "name": "Assigned snippet shortcut prepares without running and survives restart",
+      "status": "PASS"
+    },
+    {
+      "name": "Portable JSON export/import uses templates and never runs restored commands",
+      "status": "PASS"
+    }
+  ]
+}

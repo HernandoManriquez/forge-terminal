@@ -22,11 +22,10 @@
       ]
     },
     {
-      "name": "UI layout and input invariants",
+      "name": "UI models, shortcuts, cURL, inspector, data and snippet invariants",
       "command": [
         "node",
-        "--test",
-        "tests/model.test.mjs"
+        "scripts/test-models.mjs"
       ]
     },
     {
@@ -74,6 +73,56 @@
       "command": [
         "node",
         "tests/scroll-e2e.mjs"
+      ],
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "name": "Shared actions, palette and shortcut persistence",
+      "command": [
+        "node",
+        "tests/actions-e2e.mjs"
+      ],
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "name": "Real HTTP requests, cURL, history and cancellation",
+      "command": [
+        "node",
+        "tests/api-e2e.mjs"
+      ],
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "name": "Real ports, processes and confirmed termination",
+      "command": [
+        "node",
+        "tests/inspector-e2e.mjs"
+      ],
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "name": "JSON, YAML, XML and file operations",
+      "command": [
+        "node",
+        "tests/data-e2e.mjs"
+      ],
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "name": "Parameterized snippets, persistence and explicit execution",
+      "command": [
+        "node",
+        "tests/snippets-e2e.mjs"
       ],
       "platforms": [
         "linux"

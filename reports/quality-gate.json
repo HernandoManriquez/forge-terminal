@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-02T22:18:29.761341+00:00",
+  "timestamp": "2026-10-03T15:31:44.806395+00:00",
   "status": "PASS",
   "results": [
     {
@@ -13,7 +13,7 @@
       "exit_code": 0
     },
     {
-      "name": "UI layout and input invariants",
+      "name": "UI models, shortcuts, cURL, inspector, data and snippet invariants",
       "status": "PASS",
       "exit_code": 0
     },
@@ -39,6 +39,31 @@
     },
     {
       "name": "Complete terminal rows and scroll following",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "Shared actions, palette and shortcut persistence",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "Real HTTP requests, cURL, history and cancellation",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "Real ports, processes and confirmed termination",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "JSON, YAML, XML and file operations",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "name": "Parameterized snippets, persistence and explicit execution",
       "status": "PASS",
       "exit_code": 0
     }

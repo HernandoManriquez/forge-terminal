@@ -1,0 +1,18 @@
+{
+  "status": "PASS",
+  "passed": 3,
+  "results": [
+    {
+      "name": "Palette fuzzy navigation uses common registry and context availability",
+      "status": "PASS"
+    },
+    {
+      "name": "Shortcut assignment, conflict cancel/replace and persistence",
+      "status": "PASS"
+    },
+    {
+      "name": "Ctrl+F searches terminal output and editor content independently",
+      "status": "PASS"
+    }
+  ]
+}
